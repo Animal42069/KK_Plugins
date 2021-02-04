@@ -1,6 +1,8 @@
-﻿using BepInEx.Configuration;
+﻿using BepInEx;
+using BepInEx.Configuration;
+using Illusion.Game;
+using KKAPI;
 using KKAPI.Studio.SaveLoad;
-using BepInEx;
 
 namespace KK_Plugins
 {
@@ -9,7 +11,7 @@ namespace KK_Plugins
     /// </summary>
     [BepInPlugin(GUID, PluginName, Version)]
     [BepInProcess(Constants.StudioProcessName)]
-    [BepInDependency(KKAPI.KoikatuAPI.GUID)]
+    [BepInDependency(KoikatuAPI.GUID, KoikatuAPI.VersionConst)]
     public partial class StudioSceneLoadedSound : BaseUnityPlugin
     {
         public const string GUID = "com.deathweasel.bepinex.studiosceneloadedsound";
@@ -27,12 +29,20 @@ namespace KK_Plugins
             StudioSaveLoadApi.SceneLoad += OnSceneLoad;
         }
 
-        private void OnSceneLoad(object sender, SceneLoadEventArgs e)
+        private static void OnSceneLoad(object sender, SceneLoadEventArgs e)
         {
             if (e.Operation == SceneOperationKind.Import && ImportSound.Value)
                 PlayAlertSound();
             else if (e.Operation == SceneOperationKind.Load && LoadSound.Value)
                 PlayAlertSound();
         }
+
+#if AI
+        private static void PlayAlertSound() => Singleton<Manager.Resources>.Instance.SoundPack.Play(AIProject.SoundPack.SystemSE.OK_S);
+#elif HS2
+        private static void PlayAlertSound() => Utils.Sound.Play(SystemSE.ok_s);
+#elif KK
+        private static void PlayAlertSound() => Utils.Sound.Play(SystemSE.result_single);
+#endif
     }
 }

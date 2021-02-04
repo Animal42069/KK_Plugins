@@ -1,6 +1,7 @@
 ﻿using BepInEx;
 using BepInEx.Logging;
 using HarmonyLib;
+using KKAPI;
 using KKAPI.Studio;
 using Studio;
 using static Studio.OIBoneInfo;
@@ -10,7 +11,7 @@ using AIChara;
 
 namespace KK_Plugins
 {
-    [BepInDependency(KKAPI.KoikatuAPI.GUID)]
+    [BepInDependency(KoikatuAPI.GUID, KoikatuAPI.VersionConst)]
     [BepInProcess(Constants.StudioProcessName)]
     [BepInPlugin(GUID, PluginName, Version)]
     public partial class FKIK : BaseUnityPlugin
@@ -18,7 +19,7 @@ namespace KK_Plugins
         public const string GUID = "com.deathweasel.bepinex.fkik";
         public const string PluginName = "FK and IK";
         public const string PluginNameInternal = Constants.Prefix + "_FKIK";
-        public const string Version = "1.1";
+        public const string Version = "1.1.1";
         internal static new ManualLogSource Logger;
         internal static FKIK Instance;
 
@@ -34,13 +35,16 @@ namespace KK_Plugins
         /// <summary>
         /// Enable simultaneous kinematics for the specified ChaControl
         /// </summary>
-        public static void EnableFKIK(ChaControl chaControl) => EnableFKIK(StudioObjectExtensions.GetOCIChar(chaControl));
+        public static void EnableFKIK(ChaControl chaControl) => EnableFKIK(chaControl.GetOCIChar());
 
         /// <summary>
         /// Enable simultaneous kinematics for the specified OCIChar
         /// </summary>
         public static void EnableFKIK(OCIChar ociChar)
         {
+            //Store the original neck look pattern
+            var origPtn = ociChar.neckLookCtrl.ptnNo;
+
             ociChar.oiCharInfo.enableIK = true;
             ociChar.ActiveIK(BoneGroup.Body, ociChar.oiCharInfo.activeIK[0], true);
             ociChar.ActiveIK(BoneGroup.RightLeg, ociChar.oiCharInfo.activeIK[1], true);
@@ -55,15 +59,22 @@ namespace KK_Plugins
 
             for (int j = 0; j < FKCtrl.parts.Length; j++)
                 ociChar.ActiveFK(FKCtrl.parts[j], ociChar.oiCharInfo.activeFK[j], true);
+
+            //Restore the original neck look pattern which will have been overwritten
+            if (origPtn != ociChar.neckLookCtrl.ptnNo)
+                ociChar.ChangeLookNeckPtn(origPtn);
         }
 
         internal static void DisableFKIK(OCIChar ociChar)
         {
+            var origPtn = ociChar.neckLookCtrl.ptnNo;
             ociChar.oiCharInfo.enableIK = false;
             ociChar.oiCharInfo.enableFK = false;
             ociChar.finalIK.enabled = true;
             ociChar.ActiveKinematicMode(OICharInfo.KinematicMode.IK, false, true);
             ociChar.ActiveKinematicMode(OICharInfo.KinematicMode.FK, false, true);
+            if (origPtn != ociChar.neckLookCtrl.ptnNo)
+                ociChar.ChangeLookNeckPtn(origPtn);
         }
 
         internal static void ToggleFKIK(bool toggle)

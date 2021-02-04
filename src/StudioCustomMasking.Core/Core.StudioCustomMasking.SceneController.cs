@@ -39,10 +39,16 @@ namespace KK_Plugins.StudioCustomMasking
             var data = GetExtendedData();
             if (data != null)
                 if (data.data.TryGetValue(nameof(MaskingFolders), out var folders) && folders != null)
-                    foreach (int folderIndex in MessagePackSerializer.Deserialize<List<int>>((byte[])folders))
+                {
+                    var folderList = MessagePackSerializer.Deserialize<List<int>>((byte[])folders);
+                    for (var index = 0; index < folderList.Count; index++)
+                    {
+                        int folderIndex = folderList[index];
                         if (loadedItems.TryGetValue(folderIndex, out ObjectCtrlInfo oci))
                             if (oci is OCIFolder ociFolder)
                                 AddColliderToFolder(ociFolder);
+                    }
+                }
         }
 
         /// <summary>
@@ -133,12 +139,13 @@ namespace KK_Plugins.StudioCustomMasking
         {
             if (treeNodeObject == null) return null;
 
-            if (MaskingFolders.Values.Any(x => x.treeNodeObject == treeNodeObject))
+            foreach (var x in MaskingFolders.Values)
             {
-                TreeNodeObject parent = treeNodeObject.parent;
-                if (parent == null)
-                    return null;
-                return GetNonMaskingTreeNodeObject(parent);
+                if (x.treeNodeObject == treeNodeObject)
+                {
+                    TreeNodeObject parent = treeNodeObject.parent;
+                    return parent == null ? null : GetNonMaskingTreeNodeObject(parent);
+                }
             }
             return treeNodeObject;
         }
@@ -147,11 +154,13 @@ namespace KK_Plugins.StudioCustomMasking
         {
             if (collider == null) return;
 
-            var go = collider.gameObject;
-            var f = MaskingFolders.Values.FirstOrDefault(x => x.objectItem == go);
-            if (f?.treeNodeObject?.parent == null) return;
-            if (f.treeNodeObject.parent.visible)
-                f.treeNodeObject.parent.SetVisible(false);
+            foreach (var x in MaskingFolders)
+                if (x.Value.objectItem == collider.gameObject)
+                {
+                    if (x.Value == null || x.Value.treeNodeObject == null || x.Value.treeNodeObject.parent == null) return;
+                    if (x.Value.treeNodeObject.parent.visible)
+                        x.Value.treeNodeObject.parent.SetVisible(false);
+                }
         }
 
         internal void ColliderStayEvent(Collider collider) => ColliderEnterEvent(collider);
@@ -160,16 +169,26 @@ namespace KK_Plugins.StudioCustomMasking
         {
             if (collider == null) return;
 
-            var go = collider.gameObject;
-            var f = MaskingFolders.Values.FirstOrDefault(x => x.objectItem == go);
-            if (f?.treeNodeObject?.parent == null) return;
-            if (!f.treeNodeObject.parent.visible)
-                f.treeNodeObject.parent.SetVisible(true);
+            foreach (var x in MaskingFolders)
+                if (x.Value.objectItem == collider.gameObject)
+                {
+                    if (x.Value == null || x.Value.treeNodeObject == null || x.Value.treeNodeObject.parent == null) return;
+                    if (!x.Value.treeNodeObject.parent.visible)
+                        x.Value.treeNodeObject.parent.SetVisible(true);
+                }
         }
 
         internal void ItemDeleteEvent(TreeNodeObject node)
         {
-            var kvp = MaskingFolders.FirstOrDefault(x => x.Value.treeNodeObject == node);
+            var kvp = new KeyValuePair<int, OCIFolder>();
+            foreach (var x in MaskingFolders)
+            {
+                if (x.Value.treeNodeObject == node)
+                {
+                    kvp = x;
+                    break;
+                }
+            }
             if (kvp.Value != null)
                 MaskingFolders.Remove(kvp.Key);
         }

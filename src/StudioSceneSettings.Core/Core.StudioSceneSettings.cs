@@ -8,14 +8,14 @@ using UnityEngine;
 namespace KK_Plugins.StudioSceneSettings
 {
     [BepInProcess(Constants.StudioProcessName)]
-    [BepInDependency(KoikatuAPI.GUID, "1.11")]
+    [BepInDependency(KoikatuAPI.GUID, KoikatuAPI.VersionConst)]
     [BepInPlugin(GUID, PluginName, Version)]
     public partial class StudioSceneSettings : BaseUnityPlugin
     {
         public const string GUID = "com.deathweasel.bepinex.studioscenesettings";
         public const string PluginName = "StudioSceneSettings";
         public const string PluginNameInternal = Constants.Prefix + "_StudioSceneSettings";
-        public const string Version = "1.2.1";
+        public const string Version = "1.3";
         internal static new ManualLogSource Logger;
 
 #if KK

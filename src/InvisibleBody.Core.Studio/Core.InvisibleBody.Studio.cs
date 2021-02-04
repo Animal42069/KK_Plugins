@@ -1,7 +1,5 @@
-﻿using BepInEx;
-using KKAPI.Studio;
+﻿using KKAPI.Studio;
 using KKAPI.Studio.UI;
-using Studio;
 using UniRx;
 
 namespace KK_Plugins
@@ -19,14 +17,19 @@ namespace KK_Plugins
             var invisibleSwitch = new CurrentStateCategorySwitch("Invisible Body", controller => controller.charInfo.GetComponent<InvisibleBodyCharaController>().Invisible);
             invisibleSwitch.Value.Subscribe(Observer.Create((bool value) =>
             {
-                var controller = GetSelectedStudioController();
-                if (controller != null)
+                bool first = true;
+                foreach (var controller in StudioAPI.GetSelectedControllers<InvisibleBodyCharaController>())
+                {
+                    //Prevent changing other characters when the value did not actually change
+                    if (first && controller.Invisible == value)
+                        break;
+
+                    first = false;
                     controller.Invisible = value;
+                }
             }));
 
             StudioAPI.GetOrCreateCurrentStateCategory("").AddControl(invisibleSwitch);
         }
-
-        private static InvisibleBodyCharaController GetSelectedStudioController() => FindObjectOfType<MPCharCtrl>()?.ociChar?.charInfo?.GetComponent<InvisibleBodyCharaController>();
     }
 }

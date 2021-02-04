@@ -1,6 +1,8 @@
 ﻿using BepInEx;
 using BepInEx.Logging;
+using ChaCustom;
 using HarmonyLib;
+using KKAPI;
 using KKAPI.Chara;
 using KKAPI.Maker;
 using KKAPI.Maker.UI;
@@ -12,7 +14,7 @@ namespace KK_Plugins
     /// <summary>
     /// Individual customization of hair accessories for adding hair gloss, color matching, etc.
     /// </summary>
-    [BepInDependency(KKAPI.KoikatuAPI.GUID)]
+    [BepInDependency(KoikatuAPI.GUID, KoikatuAPI.VersionConst)]
     [BepInPlugin(GUID, PluginName, Version)]
     public partial class HairAccessoryCustomizer : BaseUnityPlugin
     {
@@ -30,11 +32,11 @@ namespace KK_Plugins
         internal static AccessoryControlWrapper<MakerSlider, float> HairLengthSlider;
         private static readonly bool ColorMatchDefault = true;
         private static readonly bool HairGlossDefault = true;
-        private static Color OutlineColorDefault = Color.black;
-        private static Color AccessoryColorDefault = Color.red;
+        private static readonly Color OutlineColorDefault = Color.black;
+        private static readonly Color AccessoryColorDefault = Color.red;
         private static readonly float HairLengthDefault = 0;
 
-        internal void Start()
+        private void Start()
         {
             Logger = base.Logger;
             CharacterApi.RegisterExtraBehaviour<HairAccessoryController>(GUID);
@@ -56,7 +58,7 @@ namespace KK_Plugins
         {
             if (!MakerAPI.InsideAndLoaded) return;
 
-            var cvsAccessory = AccessoriesApi.GetCvsAccessory(AccessoriesApi.SelectedMakerAccSlot);
+            var cvsAccessory = AccessoriesApi.GetMakerAccessoryPageObject(AccessoriesApi.SelectedMakerAccSlot).GetComponent<CvsAccessory>();
             Traverse.Create(cvsAccessory).Field("separateColor").GetValue<GameObject>().SetActive(false);
             Traverse.Create(cvsAccessory).Field("btnAcsColor01").GetValue<Button>().transform.parent.gameObject.SetActive(false);
             Traverse.Create(cvsAccessory).Field("btnAcsColor02").GetValue<Button>().transform.parent.gameObject.SetActive(false);
@@ -70,9 +72,9 @@ namespace KK_Plugins
         internal static void ShowAccColors(bool showButton)
         {
             if (!MakerAPI.InsideAndLoaded) return;
-
-            AccessoriesApi.GetCvsAccessory(AccessoriesApi.SelectedMakerAccSlot).ChangeUseColorVisible();
-            Traverse.Create(AccessoriesApi.GetCvsAccessory(AccessoriesApi.SelectedMakerAccSlot)).Field("btnInitColor").GetValue<Button>().transform.parent.gameObject.SetActive(showButton);
+            CvsAccessory cvsAccessory = AccessoriesApi.GetMakerAccessoryPageObject(AccessoriesApi.SelectedMakerAccSlot).GetComponent<CvsAccessory>();
+            cvsAccessory.ChangeUseColorVisible();
+            Traverse.Create(cvsAccessory).Field("btnInitColor").GetValue<Button>().transform.parent.gameObject.SetActive(showButton);
         }
         /// <summary>
         /// Sets up the visibility and values for the current slot
@@ -112,11 +114,11 @@ namespace KK_Plugins
                 OutlineColorPicker.Control.Visible.OnNext(false);
                 AccessoryColorPicker.Control.Visible.OnNext(false);
                 HairLengthSlider.Control.Visible.OnNext(false);
-                ShowAccColors(AccessoriesApi.GetAccessory(controller.ChaControl, AccessoriesApi.SelectedMakerAccSlot) != null);
+                ShowAccColors(controller.ChaControl.GetAccessoryObject(AccessoriesApi.SelectedMakerAccSlot) != null);
             }
         }
         internal static void InitCurrentSlot(HairAccessoryController controller) => InitCurrentSlot(controller, controller.IsHairAccessory(AccessoriesApi.SelectedMakerAccSlot));
 
-        internal static HairAccessoryController GetController(ChaControl character) => character?.gameObject?.GetComponent<HairAccessoryController>();
+        internal static HairAccessoryController GetController(ChaControl character) => character == null ? null : character.gameObject.GetComponent<HairAccessoryController>();
     }
 }

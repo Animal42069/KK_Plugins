@@ -1,16 +1,16 @@
 ﻿using BepInEx;
 using HarmonyLib;
 using Illusion.Extensions;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using TMPro;
 using UILib;
+using UniRx;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
-using System;
-using UniRx;
 
 namespace KK_Plugins
 {
@@ -37,42 +37,47 @@ namespace KK_Plugins
         {
             if (sceneName == "FreeH")
             {
-                CreateRandomButton(GameObject.Find("FreeHScene/Canvas/Panel/Normal/FemaleSelectButton")?.GetComponent<RectTransform>(), CharacterType.Heroine);
-                CreateRandomButton(GameObject.Find("FreeHScene/Canvas/Panel/Normal/MaleSelectButton")?.GetComponent<RectTransform>(), CharacterType.Player);
-                CreateRandomButton(GameObject.Find("FreeHScene/Canvas/Panel/Masturbation/FemaleSelectButton")?.GetComponent<RectTransform>(), CharacterType.Heroine);
-                CreateRandomButton(GameObject.Find("FreeHScene/Canvas/Panel/Lesbian/FemaleSelectButton")?.GetComponent<RectTransform>(), CharacterType.Heroine);
-                CreateRandomButton(GameObject.Find("FreeHScene/Canvas/Panel/Lesbian/PartnerSelectButton")?.GetComponent<RectTransform>(), CharacterType.Partner);
-                CreateRandomButton(GameObject.Find("FreeHScene/Canvas/Panel/3P/FemaleSelectButton")?.GetComponent<RectTransform>(), CharacterType.Female3P);
-                CreateRandomButton(GameObject.Find("FreeHScene/Canvas/Panel/3P/MaleSelectButton")?.GetComponent<RectTransform>(), CharacterType.Player);
-                CreateRandomButton(GameObject.Find("FreeHScene/Canvas/Panel/Dark/MaleSelectButton")?.GetComponent<RectTransform>(), CharacterType.Player);
+                CreateRandomButton("FreeHScene/Canvas/Panel/Normal/FemaleSelectButton", CharacterType.Heroine);
+                CreateRandomButton("FreeHScene/Canvas/Panel/Normal/MaleSelectButton", CharacterType.Player);
+                CreateRandomButton("FreeHScene/Canvas/Panel/Masturbation/FemaleSelectButton", CharacterType.Heroine);
+                CreateRandomButton("FreeHScene/Canvas/Panel/Lesbian/FemaleSelectButton", CharacterType.Heroine);
+                CreateRandomButton("FreeHScene/Canvas/Panel/Lesbian/PartnerSelectButton", CharacterType.Partner);
+                CreateRandomButton("FreeHScene/Canvas/Panel/3P/FemaleSelectButton", CharacterType.Female3P);
+                CreateRandomButton("FreeHScene/Canvas/Panel/3P/MaleSelectButton", CharacterType.Player);
+                CreateRandomButton("FreeHScene/Canvas/Panel/Dark/MaleSelectButton", CharacterType.Player);
             }
             else if (sceneName == "VRCharaSelect")
             {
-                CreateRandomButton(GameObject.Find("MainCanvas/Panel/Normal/FemaleSelectButton")?.GetComponent<RectTransform>(), CharacterType.Heroine);
-                CreateRandomButton(GameObject.Find("MainCanvas/Panel/Normal/MaleSelectButton")?.GetComponent<RectTransform>(), CharacterType.Player);
-                CreateRandomButton(GameObject.Find("MainCanvas/Panel/Masturbation/FemaleSelectButton")?.GetComponent<RectTransform>(), CharacterType.Heroine);
-                CreateRandomButton(GameObject.Find("MainCanvas/Panel/Lesbian/FemaleSelectButton")?.GetComponent<RectTransform>(), CharacterType.Heroine);
-                CreateRandomButton(GameObject.Find("MainCanvas/Panel/Lesbian/PartnerSelectButton")?.GetComponent<RectTransform>(), CharacterType.Partner);
-                CreateRandomButton(GameObject.Find("MainCanvas/Panel/3P/FemaleSelectButton")?.GetComponent<RectTransform>(), CharacterType.Female3P);
-                CreateRandomButton(GameObject.Find("MainCanvas/Panel/3P/MaleSelectButton")?.GetComponent<RectTransform>(), CharacterType.Player);
-                CreateRandomButton(GameObject.Find("MainCanvas/Panel/Dark/MaleSelectButton")?.GetComponent<RectTransform>(), CharacterType.Player);
+                CreateRandomButton("MainCanvas/Panel/Normal/FemaleSelectButton", CharacterType.Heroine);
+                CreateRandomButton("MainCanvas/Panel/Normal/MaleSelectButton", CharacterType.Player);
+                CreateRandomButton("MainCanvas/Panel/Masturbation/FemaleSelectButton", CharacterType.Heroine);
+                CreateRandomButton("MainCanvas/Panel/Lesbian/FemaleSelectButton", CharacterType.Heroine);
+                CreateRandomButton("MainCanvas/Panel/Lesbian/PartnerSelectButton", CharacterType.Partner);
+                CreateRandomButton("MainCanvas/Panel/3P/FemaleSelectButton", CharacterType.Female3P);
+                CreateRandomButton("MainCanvas/Panel/3P/MaleSelectButton", CharacterType.Player);
+                CreateRandomButton("MainCanvas/Panel/Dark/MaleSelectButton", CharacterType.Player);
             }
         }
         /// <summary>
         /// Copy the male/female selection button and rewire it in to a Random button
         /// </summary>
-        private void CreateRandomButton(RectTransform buttonToCopy, CharacterType characterType)
+        private static void CreateRandomButton(string buttonObjectPath, CharacterType characterType)
         {
+            var buttonObject = GameObject.Find(buttonObjectPath);
+            if (buttonObject == null)
+                return;
+            RectTransform buttonToCopy = buttonObject.GetComponent<RectTransform>();
             if (buttonToCopy == null)
                 return;
 
             var copy = Instantiate(buttonToCopy.gameObject);
             copy.name = $"{buttonToCopy.name}Random";
             Button randomButton = copy.GetComponent<Button>();
-            RectTransform testButtonRectTransform = randomButton.transform as RectTransform;
-            randomButton.transform.SetParent(buttonToCopy.parent, true);
-            randomButton.transform.localScale = buttonToCopy.localScale;
-            randomButton.transform.localPosition = buttonToCopy.localPosition;
+            Transform randomButtonTransform = randomButton.transform;
+            RectTransform testButtonRectTransform = randomButtonTransform as RectTransform;
+            randomButtonTransform.SetParent(buttonToCopy.parent, true);
+            randomButtonTransform.localScale = buttonToCopy.localScale;
+            randomButtonTransform.localPosition = buttonToCopy.localPosition;
             testButtonRectTransform.SetRect(buttonToCopy.anchorMin, buttonToCopy.anchorMax, buttonToCopy.offsetMin, buttonToCopy.offsetMax);
             testButtonRectTransform.anchoredPosition = buttonToCopy.anchoredPosition + new Vector2(0f, -50f);
             randomButton.onClick = new Button.ButtonClickedEvent();
@@ -85,15 +90,15 @@ namespace KK_Plugins
         /// <summary>
         /// Load the list of character cards and choose a random one
         /// </summary>
-        private void RandomizeCharacter(CharacterType characterType)
+        private static void RandomizeCharacter(CharacterType characterType)
         {
             FolderAssist folderAssist = new FolderAssist();
 
             //Get some random cards
             if (characterType == CharacterType.Player)
-                folderAssist.CreateFolderInfoEx(CC.Paths.MaleCardPath, new string[] { "*.png" }, true);
+                folderAssist.CreateFolderInfoEx(CC.Paths.MaleCardPath, new[] { "*.png" });
             else
-                folderAssist.CreateFolderInfoEx(CC.Paths.FemaleCardPath, new string[] { "*.png" }, true);
+                folderAssist.CreateFolderInfoEx(CC.Paths.FemaleCardPath, new[] { "*.png" });
 
             //Different fields for different versions of the game, get the correct one
             var listFileObj = folderAssist.GetType().GetField("_lstFile", AccessTools.all)?.GetValue(folderAssist);
@@ -101,7 +106,7 @@ namespace KK_Plugins
                 listFileObj = folderAssist.GetType().GetField("lstFile", AccessTools.all)?.GetValue(folderAssist);
             List<FolderAssist.FileInfo> lstFile = (List<FolderAssist.FileInfo>)listFileObj;
 
-            if (lstFile.Count() == 0)
+            if (lstFile == null || lstFile.Count == 0)
                 return;
 
             lstFile.Randomize();
@@ -116,10 +121,10 @@ namespace KK_Plugins
         /// <summary>
         /// Load and set the character
         /// </summary>
-        private void SetupCharacter(string filePath, CharacterType characterType)
+        private static void SetupCharacter(string filePath, CharacterType characterType)
         {
             var chaFileControl = new ChaFileControl();
-            if (chaFileControl.LoadCharaFile(filePath, 255, false, true))
+            if (chaFileControl.LoadCharaFile(filePath))
             {
                 object member;
                 if (Singleton<FreeHScene>.Instance == null)

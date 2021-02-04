@@ -3,15 +3,17 @@ using BepInEx.Bootstrap;
 using BepInEx.Configuration;
 using BepInEx.Logging;
 using HarmonyLib;
+using KKAPI;
 using KKAPI.Studio.SaveLoad;
 using Studio;
 using System.IO;
+using static KK_Plugins.ImageEmbedConstants;
 
 namespace KK_Plugins
 {
     [BepInProcess(Constants.StudioProcessName)]
-    [BepInDependency(KKAPI.KoikatuAPI.GUID)]
-    [BepInDependency(MaterialEditor.MaterialEditorPlugin.GUID, "2.0")]
+    [BepInDependency(KoikatuAPI.GUID, KoikatuAPI.VersionConst)]
+    [BepInDependency(MaterialEditor.MaterialEditorPlugin.PluginGUID, MaterialEditor.MaterialEditorPlugin.PluginVersion)]
     [BepInPlugin(GUID, PluginName, Version)]
     public partial class ImageEmbed : BaseUnityPlugin
     {
@@ -43,7 +45,7 @@ namespace KK_Plugins
             if (filePath.IsNullOrEmpty()) return;
             if (!File.Exists(filePath)) return;
 
-            foreach (var rend in item.itemComponent.GetRenderers())
+            foreach (var rend in MaterialEditorAPI.MaterialAPI.GetRendererList(item.objectItem))
                 MaterialEditor.MEStudio.GetSceneController().SetMaterialTextureFromFile(item.objectInfo.dicKey, rend.material, $"PatternMask{patternIndex + 1}", filePath);
             item.SetPatternPath(patternIndex, "");
         }
@@ -57,8 +59,8 @@ namespace KK_Plugins
             string file = Path.GetFileName(filePath);
             if (DefaultBGs.Contains(file.ToLower())) return;
 
-            foreach (var rend in item.panelComponent.renderer)
-                MaterialEditor.MEStudio.GetSceneController().SetMaterialTextureFromFile(item.objectInfo.dicKey, rend.material, "MainTex", filePath);
+            for (var i = 0; i < item.panelComponent.renderer.Length; i++)
+                MaterialEditor.MEStudio.GetSceneController().SetMaterialTextureFromFile(item.objectInfo.dicKey, item.panelComponent.renderer[i].material, "MainTex", filePath);
             item.itemInfo.panel.filePath = "";
         }
 

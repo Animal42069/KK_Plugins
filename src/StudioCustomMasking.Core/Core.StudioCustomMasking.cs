@@ -3,6 +3,7 @@ using BepInEx.Bootstrap;
 using BepInEx.Configuration;
 using BepInEx.Logging;
 using HarmonyLib;
+using KKAPI;
 using KKAPI.Studio.SaveLoad;
 using System;
 using System.IO;
@@ -15,8 +16,8 @@ using UnityEngine.UI;
 namespace KK_Plugins.StudioCustomMasking
 {
     [BepInProcess(Constants.StudioProcessName)]
-    [BepInDependency(KKAPI.KoikatuAPI.GUID)]
-    [BepInDependency(StudioSceneSettings.StudioSceneSettings.GUID, "1.2")]
+    [BepInDependency(KoikatuAPI.GUID, KoikatuAPI.VersionConst)]
+    [BepInDependency(StudioSceneSettings.StudioSceneSettings.GUID, StudioSceneSettings.StudioSceneSettings.Version)]
     [BepInPlugin(GUID, PluginName, Version)]
     public class StudioCustomMasking : BaseUnityPlugin
     {
@@ -48,7 +49,7 @@ namespace KK_Plugins.StudioCustomMasking
             Instance = this;
             var harmony = Harmony.CreateAndPatchAll(typeof(Hooks));
 
-            SceneManager.sceneLoaded += (s, lsm) => InitStudioUI(s.name);
+            SceneManager.sceneLoaded += InitStudioUI;
             StudioSaveLoadApi.RegisterExtraBehaviour<SceneController>(GUID);
 
             ColliderColor = Config.Bind("Config", "Collider Color", Color.green, "Color of the collider box drawn when one is selected");
@@ -63,32 +64,37 @@ namespace KK_Plugins.StudioCustomMasking
             if (ScreencapType != null)
             {
 #if KK
-                harmony.Patch(ScreencapType.GetMethod("TakeCharScreenshot", AccessTools.all), new HarmonyMethod(typeof(Hooks).GetMethod(nameof(Hooks.ScreencapHook), AccessTools.all)), null);
+                harmony.Patch(ScreencapType.GetMethod("TakeCharScreenshot", AccessTools.all), new HarmonyMethod(typeof(Hooks).GetMethod(nameof(Hooks.ScreencapHook), AccessTools.all)));
 #else
-                harmony.Patch(ScreencapType.GetMethod("CaptureAndWrite", AccessTools.all), new HarmonyMethod(typeof(Hooks).GetMethod(nameof(Hooks.ScreencapHook), AccessTools.all)), null);
+                harmony.Patch(ScreencapType.GetMethod("CaptureAndWrite", AccessTools.all), new HarmonyMethod(typeof(Hooks).GetMethod(nameof(Hooks.ScreencapHook), AccessTools.all)));
 #endif
             }
         }
 
-        private void ColliderColor_SettingChanged(object sender, EventArgs e)
+        private static void ColliderColor_SettingChanged(object sender, EventArgs e)
         {
-            foreach (var colliderLines in FindObjectsOfType<DrawColliderLines>())
+            var objects = FindObjectsOfType<DrawColliderLines>();
+            for (var i = 0; i < objects.Length; i++)
+            {
+                var colliderLines = objects[i];
                 colliderLines.LineMaterial = null;
+            }
         }
 
         /// <summary>
         /// Add the button for creating the masking folders
         /// </summary>
-        private void InitStudioUI(string sceneName)
+        private static void InitStudioUI(Scene scene, LoadSceneMode loadSceneMode)
         {
-            if (sceneName != "Studio") return;
-            SceneManager.sceneLoaded -= (s, lsm) => InitStudioUI(s.name);
+            if (scene.name != "Studio") return;
+            SceneManager.sceneLoaded -= InitStudioUI;
 
             RectTransform original = GameObject.Find("StudioScene").transform.Find("Canvas Object List/Image Bar/Button Route").GetComponent<RectTransform>();
             Button colliderFolderButton = Instantiate(original.gameObject).GetComponent<Button>();
-            RectTransform colliderFolderButtonRectTransform = colliderFolderButton.transform as RectTransform;
-            colliderFolderButton.transform.SetParent(original.parent, true);
-            colliderFolderButton.transform.localScale = original.localScale;
+            Transform colliderFolderButtonTransform = colliderFolderButton.transform;
+            RectTransform colliderFolderButtonRectTransform = colliderFolderButtonTransform as RectTransform;
+            colliderFolderButtonTransform.SetParent(original.parent, true);
+            colliderFolderButtonTransform.localScale = original.localScale;
             colliderFolderButtonRectTransform.SetRect(original.anchorMin, original.anchorMax, original.offsetMin, original.offsetMax);
             colliderFolderButtonRectTransform.anchoredPosition = original.anchoredPosition + new Vector2(-96f, 0f);
 
@@ -107,14 +113,18 @@ namespace KK_Plugins.StudioCustomMasking
         /// <summary>
         /// Load the button icon
         /// </summary>
-        private byte[] LoadIcon()
+        private static byte[] LoadIcon()
         {
             using (Stream stream = Assembly.GetExecutingAssembly().GetManifestResourceStream($"{nameof(KK_Plugins)}.Resources.CustomMaskingIcon.png"))
             {
-                byte[] bytesInStream = new byte[stream.Length];
-                stream.Read(bytesInStream, 0, bytesInStream.Length);
-                return bytesInStream;
+                if (stream != null)
+                {
+                    byte[] bytesInStream = new byte[stream.Length];
+                    stream.Read(bytesInStream, 0, bytesInStream.Length);
+                    return bytesInStream;
+                }
             }
+            return null;
         }
 
         private static SceneController _SceneControllerInstance;

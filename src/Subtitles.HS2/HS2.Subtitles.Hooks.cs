@@ -9,15 +9,28 @@ namespace KK_Plugins
         internal static class Hooks
         {
             [HarmonyPostfix, HarmonyPatch(typeof(HVoiceCtrl), "Init")]
-            internal static void HVoiceCtrlInit() => HSceneInstance = FindObjectOfType<HScene>();
+            private static void HVoiceCtrlInit() => HSceneInstance = FindObjectOfType<HScene>();
 
-            [HarmonyPostfix, HarmonyPatch(typeof(Manager.Voice), nameof(Manager.Voice.OncePlayChara), typeof(Manager.Voice.Loader))]
-            internal static void OncePlayCharaPostfix(Manager.Voice.Loader loader, AudioSource __result)
+            [HarmonyPostfix, HarmonyPatch(typeof(Manager.Sound), "Play", typeof(Manager.Sound.Loader))]
+            private static void PlayPostfix(Manager.Sound.Loader loader, AudioSource __result)
             {
-                if (HSceneInstance?.ctrlVoice != null)
-                    DisplayHSubtitle(loader, __result);
-                else if (SubtitleDictionary.TryGetValue(loader.asset, out string text))
+                if (loader.asset.IsNullOrEmpty() || loader.asset.Contains("_bgm_"))
+                    return;
+
+                if (SubtitleDictionary.TryGetValue(loader.asset, out string text))
                     Caption.DisplaySubtitle(__result.gameObject, text);
+            }
+
+            [HarmonyPostfix, HarmonyPatch(typeof(Manager.Voice), "Play_Standby", typeof(AudioSource), typeof(Manager.Voice.Loader))]
+            private static void PlayStandbyPostfix(AudioSource audioSource, Manager.Voice.Loader loader)
+            {
+                if (loader.asset.IsNullOrEmpty() || loader.asset.Contains("_bgm_"))
+                    return;
+
+                if (HSceneInstance != null && HSceneInstance.ctrlVoice != null)
+                    DisplayHSubtitle(loader, audioSource);
+                else if (SubtitleDictionary.TryGetValue(loader.asset, out string text))
+                    Caption.DisplaySubtitle(audioSource.gameObject, text);
             }
 
             private static void DisplayHSubtitle(Manager.Voice.Loader loader, AudioSource audioSource)

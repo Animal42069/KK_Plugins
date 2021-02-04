@@ -1,17 +1,28 @@
 ﻿using BepInEx;
 using BepInEx.Bootstrap;
-using HarmonyLib;
+using KKAPI;
+using KKAPI.Maker;
+using KKAPI.Studio;
 using KKAPI.Studio.SaveLoad;
+using MaterialEditorAPI;
 using Studio;
+using System.IO;
 using System.Linq;
+using System.Reflection;
 using UILib;
 using UniRx;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
-using static KK_Plugins.MaterialEditor.MaterialAPI;
+using static MaterialEditorAPI.MaterialAPI;
 #if AI || HS2
 using AIChara;
+using ChaClothesComponent = AIChara.CmpClothes;
+using ChaCustomHairComponent = AIChara.CmpHair;
+using ChaAccessoryComponent = AIChara.CmpAccessory;
+#endif
+#if PH
+using ChaControl = Human;
 #endif
 
 namespace KK_Plugins.MaterialEditor
@@ -20,15 +31,19 @@ namespace KK_Plugins.MaterialEditor
     /// Plugin responsible for handling the Studio UI and the KKAPI Studio controller
     /// </summary>
     [BepInProcess(Constants.StudioProcessName)]
-    [BepInDependency(KKAPI.KoikatuAPI.GUID)]
-    [BepInDependency(MaterialEditorPlugin.GUID)]
+    [BepInDependency(KoikatuAPI.GUID, KoikatuAPI.VersionConst)]
+    [BepInDependency(MaterialEditorPlugin.PluginGUID, MaterialEditorPlugin.PluginVersion)]
+    [BepInDependency(XUnity.ResourceRedirector.Constants.PluginData.Identifier, XUnity.ResourceRedirector.Constants.PluginData.Version)]
+#if !PH
+    [BepInDependency(Sideloader.Sideloader.GUID, Sideloader.Sideloader.Version)]
+#endif
     [BepInPlugin(GUID, PluginName, Version)]
-    public partial class MEStudio : UI
+    public partial class MEStudio : MaterialEditorUI
     {
         /// <summary>
         /// MaterialEditor Studio plugin GUID
         /// </summary>
-        public const string GUID = MaterialEditorPlugin.GUID + ".studio";
+        public const string GUID = MaterialEditorPlugin.PluginGUID + ".studio";
         /// <summary>
         /// MaterialEditor Studio plugin PluginName
         /// </summary>
@@ -36,12 +51,19 @@ namespace KK_Plugins.MaterialEditor
         /// <summary>
         /// MaterialEditor Studio plugin Version
         /// </summary>
-        public const string Version = MaterialEditorPlugin.Version;
+        public const string Version = MaterialEditorPlugin.PluginVersion;
+        /// <summary>
+        /// Instance of the plugin
+        /// </summary>
+        public static MEStudio Instance;
 
-        internal void Start()
+        internal static Dropdown ItemTypeDropDown;
+
+        private void Start()
         {
+            Instance = this;
             SceneManager.sceneLoaded += (s, lsm) => InitStudioUI(s.name);
-            StudioSaveLoadApi.RegisterExtraBehaviour<SceneController>(MaterialEditorPlugin.GUID);
+            StudioSaveLoadApi.RegisterExtraBehaviour<SceneController>(MaterialEditorPlugin.PluginGUID);
         }
 
         private void InitStudioUI(string sceneName)
@@ -51,13 +73,27 @@ namespace KK_Plugins.MaterialEditor
 
             InitUI();
 
+            ItemTypeDropDown = UIUtility.CreateDropdown("ItemType", DragPanel.transform);
+            ItemTypeDropDown.transform.SetRect(1f, 0f, 1f, 1f, -200f, 1f, -19f, -1f);
+            ItemTypeDropDown.captionText.transform.SetRect(0.05f, 0f, 1f, 1f, 5f, 2f, -15f, -2f);
+            ItemTypeDropDown.captionText.alignment = TextAnchor.MiddleLeft;
+            ItemTypeDropDown.gameObject.SetActive(false);
+
+#if PH
+            RectTransform original = GameObject.Find("StudioScene").transform.Find("Canvas Object List/Image Bar/Button Folder").GetComponent<RectTransform>();
+#else
             RectTransform original = GameObject.Find("StudioScene").transform.Find("Canvas Object List/Image Bar/Button Route").GetComponent<RectTransform>();
+#endif
             Button materialEditorButton = Instantiate(original.gameObject).GetComponent<Button>();
             RectTransform materialEditorButtonRectTransform = materialEditorButton.transform as RectTransform;
             materialEditorButton.transform.SetParent(original.parent, true);
             materialEditorButton.transform.localScale = original.localScale;
             materialEditorButtonRectTransform.SetRect(original.anchorMin, original.anchorMax, original.offsetMin, original.offsetMax);
+#if PH
+            materialEditorButtonRectTransform.anchoredPosition = original.anchoredPosition + new Vector2(-40f, 0f);
+#else
             materialEditorButtonRectTransform.anchoredPosition = original.anchoredPosition + new Vector2(-48f, 0f);
+#endif
 
             Texture2D texture2D = new Texture2D(32, 32);
             texture2D.LoadImage(LoadIcon());
@@ -66,12 +102,23 @@ namespace KK_Plugins.MaterialEditor
             MatEditorIcon.color = Color.white;
 
             materialEditorButton.onClick = new Button.ButtonClickedEvent();
-            materialEditorButton.onClick.AddListener(() => { PopulateListStudio(); });
-
-            Harmony.CreateAndPatchAll(typeof(StudioHooks));
+            materialEditorButton.onClick.AddListener(() => { UpdateUI(); });
         }
 
-        private void PopulateListStudio()
+        internal byte[] LoadIcon()
+        {
+            using (Stream stream = Assembly.GetExecutingAssembly().GetManifestResourceStream($"{nameof(KK_Plugins)}.Resources.MaterialEditorIcon.png"))
+            {
+                byte[] bytesInStream = new byte[stream.Length];
+                stream.Read(bytesInStream, 0, bytesInStream.Length);
+                return bytesInStream;
+            }
+        }
+
+        /// <summary>
+        /// Shows the MaterialEditor UI for the selected item or refreshes the UI if already open
+        /// </summary>
+        public void UpdateUI()
         {
             if (Singleton<Studio.Studio>.Instance.treeNodeCtrl.selectNodes.Length != 1)
                 return;
@@ -80,9 +127,241 @@ namespace KK_Plugins.MaterialEditor
             for (int i = 0; i < selectNodes.Length; i++)
                 if (Studio.Studio.Instance.dicInfo.TryGetValue(selectNodes[i], out ObjectCtrlInfo objectCtrlInfo))
                     if (objectCtrlInfo is OCIItem ociItem)
-                        PopulateList(ociItem.objectItem, slot: GetObjectID(objectCtrlInfo));
+                    {
+                        PopulateList(ociItem.objectItem, GetObjectID(objectCtrlInfo));
+                        ItemTypeDropDown.gameObject.SetActive(false);
+                    }
                     else if (objectCtrlInfo is OCIChar ociChar)
-                        PopulateList(ociChar.charInfo.gameObject, slot: GetObjectID(objectCtrlInfo));
+                    {
+                        PopulateList(ociChar.charInfo.gameObject, new ObjectData(0, MaterialEditorCharaController.ObjectType.Character));
+                        var chaControl = ociChar.GetChaControl();
+                        PopulateItemTypeDropdown(chaControl);
+                        ItemTypeDropDown.gameObject.SetActive(true);
+                    }
+        }
+
+        /// <summary>
+        /// Populate the ItemType dropdown for switching between displaying various types of items on a character
+        /// </summary>
+        protected void PopulateItemTypeDropdown(ChaControl chaControl)
+        {
+            ItemTypeDropDown.onValueChanged.RemoveAllListeners();
+            ItemTypeDropDown.onValueChanged.AddListener(value => ChangeItemType(value, chaControl));
+            ItemTypeDropDown.options.Clear();
+            ItemTypeDropDown.options.Add(new Dropdown.OptionData("Body"));
+            ItemTypeDropDown.Set(0);
+            ItemTypeDropDown.captionText.text = "Body";
+
+            var clothes = chaControl.GetClothes();
+            for (var i = 0; i < clothes.Length; i++)
+#if PH
+                if (clothes[i] != null)
+#else
+                if (clothes[i] != null && clothes[i].GetComponentInChildren<ChaClothesComponent>() != null)
+#endif
+                    ItemTypeDropDown.options.Add(new Dropdown.OptionData($"Clothes {ClothesIndexToString(i)}"));
+
+            var hair = chaControl.GetHair();
+            for (var i = 0; i < hair.Length; i++)
+#if PH
+                if (hair[i] != null)
+#else
+                if (hair[i] != null && chaControl.objHair[i].GetComponent<ChaCustomHairComponent>() != null)
+#endif
+                    ItemTypeDropDown.options.Add(new Dropdown.OptionData($"Hair {HairIndexToString(i)}"));
+
+            var accessories = chaControl.GetAccessoryObjects();
+            for (var i = 0; i < accessories.Length; i++)
+                if (accessories[i] != null)
+                    ItemTypeDropDown.options.Add(new Dropdown.OptionData($"Accessory {AccessoryIndexToString(i)}"));
+        }
+
+        private void ChangeItemType(int selectedItem, ChaControl chaControl)
+        {
+            var option = ItemTypeDropDown.OptionText(selectedItem).Split(' ');
+            int index = 0;
+
+            if (chaControl == null)
+                PopulateList(null, null);
+
+            switch (option[0])
+            {
+                case "Body":
+                    PopulateList(chaControl.gameObject, new ObjectData(0, MaterialEditorCharaController.ObjectType.Character));
+                    break;
+                case "Clothes":
+                    if (option.Length > 1)
+                        index = ClothesStringToIndex(option[1]);
+
+                    var clothes = chaControl.GetClothes(index);
+#if PH
+                    if (index == -1 || clothes == null)
+#else
+                    if (index == -1 || clothes == null || chaControl.objClothes[index].GetComponentInChildren<ChaClothesComponent>() == null)
+#endif
+                        PopulateList(chaControl.gameObject, 0);
+                    else
+                        PopulateList(clothes, new ObjectData(index, MaterialEditorCharaController.ObjectType.Clothing));
+                    break;
+                case "Hair":
+                    if (option.Length > 1)
+                        index = HairStringToIndex(option[1]);
+
+                    var hair = chaControl.GetHair(index);
+#if PH
+                    if (index == -1 || hair == null)
+#else
+                    if (index == -1 || hair == null || hair.GetComponent<ChaCustomHairComponent>() == null)
+#endif
+                        PopulateList(chaControl.gameObject, 0);
+                    else
+                        PopulateList(hair, new ObjectData(index, MaterialEditorCharaController.ObjectType.Hair));
+                    break;
+                case "Accessory":
+                    if (option.Length > 1)
+                        index = AccessoryStringToIndex(option[1]);
+                    var accessory = chaControl.GetAccessoryObject(index);
+                    if (accessory == null)
+                        PopulateList(chaControl.gameObject, 0);
+                    else
+                        PopulateList(accessory, new ObjectData(index, MaterialEditorCharaController.ObjectType.Accessory));
+                    break;
+            }
+        }
+
+        private string ClothesIndexToString(int index)
+        {
+            switch (index)
+            {
+                case 0:
+                    return "Top";
+                case 1:
+                    return "Bottom";
+                case 2:
+                    return "Bra";
+                case 3:
+                    return "Underwear";
+#if PH
+                case 4:
+                    return "Swimwear";
+                case 5:
+                    return "SwimTop";
+                case 6:
+                    return "SwimBot";
+                case 7:
+                    return "Gloves";
+                case 8:
+                    return "Pantyhose";
+                case 9:
+                    return "Legwear";
+                case 10:
+                    return "Shoes";
+#else
+                case 4:
+                    return "Gloves";
+                case 5:
+                    return "Pantyhose";
+                case 6:
+                    return "Legwear";
+#if !KK
+                case 7:
+                    return "Shoes";
+#else
+                case 7:
+                    return "Indoor Shoes";
+                case 8:
+                    return "Outdoor Shoes";
+#endif
+#endif
+                default:
+                    return "";
+            }
+        }
+        private int ClothesStringToIndex(string s)
+        {
+            switch (s)
+            {
+                case "Top":
+                    return 0;
+                case "Bottom":
+                    return 1;
+                case "Bra":
+                    return 2;
+                case "Underwear":
+                    return 3;
+#if PH
+                case "Swimwear":
+                    return 4;
+                case "SwimTop":
+                    return 5;
+                case "SwimBot":
+                    return 6;
+                case "Gloves":
+                    return 7;
+                case "Pantyhose":
+                    return 8;
+                case "Legwear":
+                    return 9;
+                case "Shoes":
+                    return 10;
+#else
+                case "Gloves":
+                    return 4;
+                case "Pantyhose":
+                    return 5;
+                case "Legwear":
+                    return 6;
+                case "Indoor Shoes":
+                case "Indoor":
+                case "Shoes":
+                    return 7;
+                case "Outdoor Shoes":
+                case "Outdoor":
+                    return 8;
+#endif
+                default:
+                    return -1;
+            }
+        }
+
+        private string HairIndexToString(int index)
+        {
+            switch (index)
+            {
+                case 0:
+                    return "Back";
+                case 1:
+                    return "Front";
+                case 2:
+                    return "Side";
+                case 3:
+                    return "Extension";
+                default:
+                    return "";
+            }
+        }
+        private int HairStringToIndex(string s)
+        {
+            switch (s)
+            {
+                case "Back":
+                    return 0;
+                case "Front":
+                    return 1;
+                case "Side":
+                    return 2;
+                case "Extension":
+                    return 3;
+                default:
+                    return -1;
+            }
+        }
+        private string AccessoryIndexToString(int index) => $"{index + 1:00}";
+        private int AccessoryStringToIndex(string s)
+        {
+            if (int.TryParse(s, out int index))
+                return index - 1;
+            return -1;
         }
 
         /// <summary>
@@ -97,221 +376,273 @@ namespace KK_Plugins.MaterialEditor
         /// <returns></returns>
         public static SceneController GetSceneController() => Chainloader.ManagerObject.transform.GetComponentInChildren<SceneController>();
 
-        internal override string GetRendererPropertyValueOriginal(int slot, Renderer renderer, RendererProperties property, GameObject gameObject)
+        public override string GetRendererPropertyValueOriginal(object data, Renderer renderer, RendererProperties property, GameObject go)
         {
-            var chaControl = gameObject.GetComponent<ChaControl>();
-            if (chaControl != null)
-                return MaterialEditorPlugin.GetCharaController(chaControl).GetRendererPropertyValueOriginal(slot, renderer, property, gameObject);
+            if (data is ObjectData objectData)
+            {
+                var chaControl = go.GetComponentInParent<ChaControl>();
+                return MaterialEditorPlugin.GetCharaController(chaControl).GetRendererPropertyValueOriginal(objectData.Slot, objectData.ObjectType, renderer, property, go);
+            }
             else
-                return GetSceneController().GetRendererPropertyValueOriginal(slot, renderer, property);
+                return GetSceneController().GetRendererPropertyValueOriginal((int)data, renderer, property);
         }
-        internal override void SetRendererProperty(int slot, Renderer renderer, RendererProperties property, string value, GameObject gameObject)
+        public override void SetRendererProperty(object data, Renderer renderer, RendererProperties property, string value, GameObject go)
         {
-            var chaControl = gameObject.GetComponent<ChaControl>();
-            if (chaControl != null)
-                MaterialEditorPlugin.GetCharaController(chaControl).SetRendererProperty(slot, renderer, property, value, gameObject);
+            if (data is ObjectData objectData)
+            {
+                var chaControl = go.GetComponentInParent<ChaControl>();
+                MaterialEditorPlugin.GetCharaController(chaControl).SetRendererProperty(objectData.Slot, objectData.ObjectType, renderer, property, value, go);
+            }
             else
-                GetSceneController().SetRendererProperty(slot, renderer, property, value);
+                GetSceneController().SetRendererProperty((int)data, renderer, property, value);
         }
-        internal override void RemoveRendererProperty(int slot, Renderer renderer, RendererProperties property, GameObject gameObject)
+        public override void RemoveRendererProperty(object data, Renderer renderer, RendererProperties property, GameObject go)
         {
-            var chaControl = gameObject.GetComponent<ChaControl>();
-            if (chaControl != null)
-                MaterialEditorPlugin.GetCharaController(chaControl).RemoveRendererProperty(slot, renderer, property, gameObject);
+            if (data is ObjectData objectData)
+            {
+                var chaControl = go.GetComponentInParent<ChaControl>();
+                MaterialEditorPlugin.GetCharaController(chaControl).RemoveRendererProperty(objectData.Slot, objectData.ObjectType, renderer, property, go);
+            }
             else
-                GetSceneController().RemoveRendererProperty(slot, renderer, property);
-        }
-
-        internal override void MaterialCopyEdits(int slot, Material material, GameObject gameObject)
-        {
-            var chaControl = gameObject.GetComponent<ChaControl>();
-            if (chaControl != null)
-                MaterialEditorPlugin.GetCharaController(chaControl).MaterialCopyEdits(slot, material, gameObject);
-            else
-                GetSceneController().MaterialCopyEdits(slot, material);
-        }
-        internal override void MaterialPasteEdits(int slot, Material material, GameObject gameObject)
-        {
-            var chaControl = gameObject.GetComponent<ChaControl>();
-            if (chaControl != null)
-                MaterialEditorPlugin.GetCharaController(chaControl).MaterialPasteEdits(slot, material, gameObject);
-            else
-                GetSceneController().MaterialPasteEdits(slot, material);
+                GetSceneController().RemoveRendererProperty((int)data, renderer, property);
         }
 
-        internal override string GetMaterialShaderNameOriginal(int slot, Material material, GameObject gameObject)
+        public override void MaterialCopyEdits(object data, Material material, GameObject go)
         {
-            var chaControl = gameObject.GetComponent<ChaControl>();
-            if (chaControl != null)
-                return MaterialEditorPlugin.GetCharaController(chaControl).GetMaterialShaderOriginal(slot, material, gameObject);
+            if (data is ObjectData objectData)
+            {
+                var chaControl = go.GetComponentInParent<ChaControl>();
+                MaterialEditorPlugin.GetCharaController(chaControl).MaterialCopyEdits(objectData.Slot, objectData.ObjectType, material, go);
+            }
             else
-                return GetSceneController().GetMaterialShaderOriginal(slot, material);
+                GetSceneController().MaterialCopyEdits((int)data, material);
         }
-        internal override void SetMaterialShaderName(int slot, Material material, string value, GameObject gameObject)
+        public override void MaterialPasteEdits(object data, Material material, GameObject go)
         {
-            var chaControl = gameObject.GetComponent<ChaControl>();
-            if (chaControl != null)
-                MaterialEditorPlugin.GetCharaController(chaControl).SetMaterialShader(slot, material, value, gameObject);
+            if (data is ObjectData objectData)
+            {
+                var chaControl = go.GetComponentInParent<ChaControl>();
+                MaterialEditorPlugin.GetCharaController(chaControl).MaterialPasteEdits(objectData.Slot, objectData.ObjectType, material, go);
+            }
             else
-                GetSceneController().SetMaterialShader(slot, material, value);
-        }
-        internal override void RemoveMaterialShaderName(int slot, Material material, GameObject gameObject)
-        {
-            var chaControl = gameObject.GetComponent<ChaControl>();
-            if (chaControl != null)
-                MaterialEditorPlugin.GetCharaController(chaControl).RemoveMaterialShader(slot, material, gameObject);
-            else
-                GetSceneController().RemoveMaterialShader(slot, material);
+                GetSceneController().MaterialPasteEdits((int)data, material);
         }
 
-        internal override int? GetMaterialShaderRenderQueueOriginal(int slot, Material material, GameObject gameObject)
+        public override string GetMaterialShaderNameOriginal(object data, Material material, GameObject go)
         {
-            var chaControl = gameObject.GetComponent<ChaControl>();
-            if (chaControl != null)
-                return MaterialEditorPlugin.GetCharaController(chaControl).GetMaterialShaderRenderQueueOriginal(slot, material, gameObject);
+            if (data is ObjectData objectData)
+            {
+                var chaControl = go.GetComponentInParent<ChaControl>();
+                return MaterialEditorPlugin.GetCharaController(chaControl).GetMaterialShaderOriginal(objectData.Slot, objectData.ObjectType, material, go);
+            }
             else
-                return GetSceneController().GetMaterialShaderRenderQueueOriginal(slot, material);
+                return GetSceneController().GetMaterialShaderOriginal((int)data, material);
         }
-        internal override void SetMaterialShaderRenderQueue(int slot, Material material, int value, GameObject gameObject)
+        public override void SetMaterialShaderName(object data, Material material, string value, GameObject go)
         {
-            var chaControl = gameObject.GetComponent<ChaControl>();
-            if (chaControl != null)
-                MaterialEditorPlugin.GetCharaController(chaControl).SetMaterialShaderRenderQueue(slot, material, value, gameObject);
+            if (data is ObjectData objectData)
+            {
+                var chaControl = go.GetComponentInParent<ChaControl>();
+                MaterialEditorPlugin.GetCharaController(chaControl).SetMaterialShader(objectData.Slot, objectData.ObjectType, material, value, go);
+            }
             else
-                GetSceneController().SetMaterialShaderRenderQueue(slot, material, value);
+                GetSceneController().SetMaterialShader((int)data, material, value);
         }
-        internal override void RemoveMaterialShaderRenderQueue(int slot, Material material, GameObject gameObject)
+        public override void RemoveMaterialShaderName(object data, Material material, GameObject go)
         {
-            var chaControl = gameObject.GetComponent<ChaControl>();
-            if (chaControl != null)
-                MaterialEditorPlugin.GetCharaController(chaControl).RemoveMaterialShaderRenderQueue(slot, material, gameObject);
+            if (data is ObjectData objectData)
+            {
+                var chaControl = go.GetComponentInParent<ChaControl>();
+                MaterialEditorPlugin.GetCharaController(chaControl).RemoveMaterialShader(objectData.Slot, objectData.ObjectType, material, go);
+            }
             else
-                GetSceneController().RemoveMaterialShaderRenderQueue(slot, material);
-        }
-
-        internal override bool GetMaterialTextureValueOriginal(int slot, Material material, string propertyName, GameObject gameObject)
-        {
-            var chaControl = gameObject.GetComponent<ChaControl>();
-            if (chaControl != null)
-                return MaterialEditorPlugin.GetCharaController(chaControl).GetMaterialTextureOriginal(slot, material, propertyName, gameObject);
-            else
-                return GetSceneController().GetMaterialTextureOriginal(slot, material, propertyName);
-        }
-        internal override void SetMaterialTexture(int slot, Material material, string propertyName, string filePath, GameObject gameObject)
-        {
-            var chaControl = gameObject.GetComponent<ChaControl>();
-            if (chaControl != null)
-                MaterialEditorPlugin.GetCharaController(chaControl).SetMaterialTextureFromFile(slot, material, propertyName, filePath, gameObject, true);
-            else
-                GetSceneController().SetMaterialTextureFromFile(slot, material, propertyName, filePath, true);
-        }
-        internal override void RemoveMaterialTexture(int slot, Material material, string propertyName, GameObject gameObject)
-        {
-            var chaControl = gameObject.GetComponent<ChaControl>();
-            if (chaControl != null)
-                MaterialEditorPlugin.GetCharaController(chaControl).RemoveMaterialTexture(slot, material, propertyName, gameObject);
-            else
-                GetSceneController().RemoveMaterialTexture(slot, material, propertyName);
+                GetSceneController().RemoveMaterialShader((int)data, material);
         }
 
-        internal override Vector2? GetMaterialTextureOffsetOriginal(int slot, Material material, string propertyName, GameObject gameObject)
+        public override int? GetMaterialShaderRenderQueueOriginal(object data, Material material, GameObject go)
         {
-            var chaControl = gameObject.GetComponent<ChaControl>();
-            if (chaControl != null)
-                return MaterialEditorPlugin.GetCharaController(chaControl).GetMaterialTextureOffsetOriginal(slot, material, propertyName, gameObject);
+            if (data is ObjectData objectData)
+            {
+                var chaControl = go.GetComponentInParent<ChaControl>();
+                return MaterialEditorPlugin.GetCharaController(chaControl).GetMaterialShaderRenderQueueOriginal(objectData.Slot, objectData.ObjectType, material, go);
+            }
             else
-                return GetSceneController().GetMaterialTextureOffsetOriginal(slot, material, propertyName);
+                return GetSceneController().GetMaterialShaderRenderQueueOriginal((int)data, material);
         }
-        internal override void SetMaterialTextureOffset(int slot, Material material, string propertyName, Vector2 value, GameObject gameObject)
+        public override void SetMaterialShaderRenderQueue(object data, Material material, int value, GameObject go)
         {
-            var chaControl = gameObject.GetComponent<ChaControl>();
-            if (chaControl != null)
-                MaterialEditorPlugin.GetCharaController(chaControl).SetMaterialTextureOffset(slot, material, propertyName, value, gameObject);
+            if (data is ObjectData objectData)
+            {
+                var chaControl = go.GetComponentInParent<ChaControl>();
+                MaterialEditorPlugin.GetCharaController(chaControl).SetMaterialShaderRenderQueue(objectData.Slot, objectData.ObjectType, material, value, go);
+            }
             else
-                GetSceneController().SetMaterialTextureOffset(slot, material, propertyName, value);
+                GetSceneController().SetMaterialShaderRenderQueue((int)data, material, value);
         }
-        internal override void RemoveMaterialTextureOffset(int slot, Material material, string propertyName, GameObject gameObject)
+        public override void RemoveMaterialShaderRenderQueue(object data, Material material, GameObject go)
         {
-            var chaControl = gameObject.GetComponent<ChaControl>();
-            if (chaControl != null)
-                MaterialEditorPlugin.GetCharaController(chaControl).RemoveMaterialTextureOffset(slot, material, propertyName, gameObject);
+            if (data is ObjectData objectData)
+            {
+                var chaControl = go.GetComponentInParent<ChaControl>();
+                MaterialEditorPlugin.GetCharaController(chaControl).RemoveMaterialShaderRenderQueue(objectData.Slot, objectData.ObjectType, material, go);
+            }
             else
-                GetSceneController().RemoveMaterialTextureOffset(slot, material, propertyName);
-        }
-
-        internal override Vector2? GetMaterialTextureScaleOriginal(int slot, Material material, string propertyName, GameObject gameObject)
-        {
-            var chaControl = gameObject.GetComponent<ChaControl>();
-            if (chaControl != null)
-                return MaterialEditorPlugin.GetCharaController(chaControl).GetMaterialTextureScaleOriginal(slot, material, propertyName, gameObject);
-            else
-                return GetSceneController().GetMaterialTextureScaleOriginal(slot, material, propertyName);
-        }
-        internal override void SetMaterialTextureScale(int slot, Material material, string propertyName, Vector2 value, GameObject gameObject)
-        {
-            var chaControl = gameObject.GetComponent<ChaControl>();
-            if (chaControl != null)
-                MaterialEditorPlugin.GetCharaController(chaControl).SetMaterialTextureScale(slot, material, propertyName, value, gameObject);
-            else
-                GetSceneController().SetMaterialTextureScale(slot, material, propertyName, value);
-        }
-        internal override void RemoveMaterialTextureScale(int slot, Material material, string propertyName, GameObject gameObject)
-        {
-            var chaControl = gameObject.GetComponent<ChaControl>();
-            if (chaControl != null)
-                MaterialEditorPlugin.GetCharaController(chaControl).RemoveMaterialTextureScale(slot, material, propertyName, gameObject);
-            else
-                GetSceneController().RemoveMaterialTextureScale(slot, material, propertyName);
+                GetSceneController().RemoveMaterialShaderRenderQueue((int)data, material);
         }
 
-        internal override Color? GetMaterialColorPropertyValueOriginal(int slot, Material material, string propertyName, GameObject gameObject)
+        public override bool GetMaterialTextureValueOriginal(object data, Material material, string propertyName, GameObject go)
         {
-            var chaControl = gameObject.GetComponent<ChaControl>();
-            if (chaControl != null)
-                return MaterialEditorPlugin.GetCharaController(chaControl).GetMaterialColorPropertyValueOriginal(slot, material, propertyName, gameObject);
+            if (data is ObjectData objectData)
+            {
+                var chaControl = go.GetComponentInParent<ChaControl>();
+                return MaterialEditorPlugin.GetCharaController(chaControl).GetMaterialTextureOriginal(objectData.Slot, objectData.ObjectType, material, propertyName, go);
+            }
             else
-                return GetSceneController().GetMaterialColorPropertyValueOriginal(slot, material, propertyName);
+                return GetSceneController().GetMaterialTextureOriginal((int)data, material, propertyName);
         }
-        internal override void SetMaterialColorProperty(int slot, Material material, string propertyName, Color value, GameObject gameObject)
+        public override void SetMaterialTexture(object data, Material material, string propertyName, string filePath, GameObject go)
         {
-            var chaControl = gameObject.GetComponent<ChaControl>();
-            if (chaControl != null)
-                MaterialEditorPlugin.GetCharaController(chaControl).SetMaterialColorProperty(slot, material, propertyName, value, gameObject);
+            if (data is ObjectData objectData)
+            {
+                var chaControl = go.GetComponentInParent<ChaControl>();
+                MaterialEditorPlugin.GetCharaController(chaControl).SetMaterialTextureFromFile(objectData.Slot, objectData.ObjectType, material, propertyName, filePath, go, true);
+            }
             else
-                GetSceneController().SetMaterialColorProperty(slot, material, propertyName, value);
+                GetSceneController().SetMaterialTextureFromFile((int)data, material, propertyName, filePath, true);
         }
-        internal override void RemoveMaterialColorProperty(int slot, Material material, string propertyName, GameObject gameObject)
+        public override void RemoveMaterialTexture(object data, Material material, string propertyName, GameObject go)
         {
-            var chaControl = gameObject.GetComponent<ChaControl>();
-            if (chaControl != null)
-                MaterialEditorPlugin.GetCharaController(chaControl).RemoveMaterialColorProperty(slot, material, propertyName, gameObject);
+            if (data is ObjectData objectData)
+            {
+                var chaControl = go.GetComponentInParent<ChaControl>();
+                MaterialEditorPlugin.GetCharaController(chaControl).RemoveMaterialTexture(objectData.Slot, objectData.ObjectType, material, propertyName, go);
+            }
             else
-                GetSceneController().RemoveMaterialColorProperty(slot, material, propertyName);
+                GetSceneController().RemoveMaterialTexture((int)data, material, propertyName);
         }
 
-        internal override float? GetMaterialFloatPropertyValueOriginal(int slot, Material material, string propertyName, GameObject gameObject)
+        public override Vector2? GetMaterialTextureOffsetOriginal(object data, Material material, string propertyName, GameObject go)
         {
-            var chaControl = gameObject.GetComponent<ChaControl>();
-            if (chaControl != null)
-                return MaterialEditorPlugin.GetCharaController(chaControl).GetMaterialFloatPropertyValueOriginal(slot, material, propertyName, gameObject);
+            if (data is ObjectData objectData)
+            {
+                var chaControl = go.GetComponentInParent<ChaControl>();
+                return MaterialEditorPlugin.GetCharaController(chaControl).GetMaterialTextureOffsetOriginal(objectData.Slot, objectData.ObjectType, material, propertyName, go);
+            }
             else
-                return GetSceneController().GetMaterialFloatPropertyValueOriginal(slot, material, propertyName);
+                return GetSceneController().GetMaterialTextureOffsetOriginal((int)data, material, propertyName);
         }
-        internal override void SetMaterialFloatProperty(int slot, Material material, string propertyName, float value, GameObject gameObject)
+        public override void SetMaterialTextureOffset(object data, Material material, string propertyName, Vector2 value, GameObject go)
         {
-            var chaControl = gameObject.GetComponent<ChaControl>();
-            if (chaControl != null)
-                MaterialEditorPlugin.GetCharaController(chaControl).SetMaterialFloatProperty(slot, material, propertyName, value, gameObject);
+            if (data is ObjectData objectData)
+            {
+                var chaControl = go.GetComponentInParent<ChaControl>();
+                MaterialEditorPlugin.GetCharaController(chaControl).SetMaterialTextureOffset(objectData.Slot, objectData.ObjectType, material, propertyName, value, go);
+            }
             else
-                GetSceneController().SetMaterialFloatProperty(slot, material, propertyName, value);
+                GetSceneController().SetMaterialTextureOffset((int)data, material, propertyName, value);
         }
-        internal override void RemoveMaterialFloatProperty(int slot, Material material, string propertyName, GameObject gameObject)
+        public override void RemoveMaterialTextureOffset(object data, Material material, string propertyName, GameObject go)
         {
-            var chaControl = gameObject.GetComponent<ChaControl>();
-            if (chaControl != null)
-                MaterialEditorPlugin.GetCharaController(chaControl).RemoveMaterialFloatProperty(slot, material, propertyName, gameObject);
+            if (data is ObjectData objectData)
+            {
+                var chaControl = go.GetComponentInParent<ChaControl>();
+                MaterialEditorPlugin.GetCharaController(chaControl).RemoveMaterialTextureOffset(objectData.Slot, objectData.ObjectType, material, propertyName, go);
+            }
             else
-                GetSceneController().RemoveMaterialFloatProperty(slot, material, propertyName);
+                GetSceneController().RemoveMaterialTextureOffset((int)data, material, propertyName);
+        }
+
+        public override Vector2? GetMaterialTextureScaleOriginal(object data, Material material, string propertyName, GameObject go)
+        {
+            if (data is ObjectData objectData)
+            {
+                var chaControl = go.GetComponentInParent<ChaControl>();
+                return MaterialEditorPlugin.GetCharaController(chaControl).GetMaterialTextureScaleOriginal(objectData.Slot, objectData.ObjectType, material, propertyName, go);
+            }
+            else
+                return GetSceneController().GetMaterialTextureScaleOriginal((int)data, material, propertyName);
+        }
+        public override void SetMaterialTextureScale(object data, Material material, string propertyName, Vector2 value, GameObject go)
+        {
+            if (data is ObjectData objectData)
+            {
+                var chaControl = go.GetComponentInParent<ChaControl>();
+                MaterialEditorPlugin.GetCharaController(chaControl).SetMaterialTextureScale(objectData.Slot, objectData.ObjectType, material, propertyName, value, go);
+            }
+            else
+                GetSceneController().SetMaterialTextureScale((int)data, material, propertyName, value);
+        }
+        public override void RemoveMaterialTextureScale(object data, Material material, string propertyName, GameObject go)
+        {
+            if (data is ObjectData objectData)
+            {
+                var chaControl = go.GetComponentInParent<ChaControl>();
+                MaterialEditorPlugin.GetCharaController(chaControl).RemoveMaterialTextureScale(objectData.Slot, objectData.ObjectType, material, propertyName, go);
+            }
+            else
+                GetSceneController().RemoveMaterialTextureScale((int)data, material, propertyName);
+        }
+
+        public override Color? GetMaterialColorPropertyValueOriginal(object data, Material material, string propertyName, GameObject go)
+        {
+            if (data is ObjectData objectData)
+            {
+                var chaControl = go.GetComponentInParent<ChaControl>();
+                return MaterialEditorPlugin.GetCharaController(chaControl).GetMaterialColorPropertyValueOriginal(objectData.Slot, objectData.ObjectType, material, propertyName, go);
+            }
+            else
+                return GetSceneController().GetMaterialColorPropertyValueOriginal((int)data, material, propertyName);
+        }
+        public override void SetMaterialColorProperty(object data, Material material, string propertyName, Color value, GameObject go)
+        {
+            if (data is ObjectData objectData)
+            {
+                var chaControl = go.GetComponentInParent<ChaControl>();
+                MaterialEditorPlugin.GetCharaController(chaControl).SetMaterialColorProperty(objectData.Slot, objectData.ObjectType, material, propertyName, value, go);
+            }
+            else
+                GetSceneController().SetMaterialColorProperty((int)data, material, propertyName, value);
+        }
+        public override void RemoveMaterialColorProperty(object data, Material material, string propertyName, GameObject go)
+        {
+            if (data is ObjectData objectData)
+            {
+                var chaControl = go.GetComponentInParent<ChaControl>();
+                MaterialEditorPlugin.GetCharaController(chaControl).RemoveMaterialColorProperty(objectData.Slot, objectData.ObjectType, material, propertyName, go);
+            }
+            else
+                GetSceneController().RemoveMaterialColorProperty((int)data, material, propertyName);
+        }
+
+        public override float? GetMaterialFloatPropertyValueOriginal(object data, Material material, string propertyName, GameObject go)
+        {
+            if (data is ObjectData objectData)
+            {
+                var chaControl = go.GetComponentInParent<ChaControl>();
+                return MaterialEditorPlugin.GetCharaController(chaControl).GetMaterialFloatPropertyValueOriginal(objectData.Slot, objectData.ObjectType, material, propertyName, go);
+            }
+            else
+                return GetSceneController().GetMaterialFloatPropertyValueOriginal((int)data, material, propertyName);
+        }
+        public override void SetMaterialFloatProperty(object data, Material material, string propertyName, float value, GameObject go)
+        {
+            if (data is ObjectData objectData)
+            {
+                var chaControl = go.GetComponentInParent<ChaControl>();
+                MaterialEditorPlugin.GetCharaController(chaControl).SetMaterialFloatProperty(objectData.Slot, objectData.ObjectType, material, propertyName, value, go);
+            }
+            else
+                GetSceneController().SetMaterialFloatProperty((int)data, material, propertyName, value);
+        }
+        public override void RemoveMaterialFloatProperty(object data, Material material, string propertyName, GameObject go)
+        {
+            if (data is ObjectData objectData)
+            {
+                var chaControl = go.GetComponentInParent<ChaControl>();
+                MaterialEditorPlugin.GetCharaController(chaControl).RemoveMaterialFloatProperty(objectData.Slot, objectData.ObjectType, material, propertyName, go);
+            }
+            else
+                GetSceneController().RemoveMaterialFloatProperty((int)data, material, propertyName);
         }
     }
 }

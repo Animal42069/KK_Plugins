@@ -6,14 +6,6 @@ namespace UILib
 {
     internal static class UIUtility
     {
-        #region Public Types
-        public enum Binary
-        {
-            Neo,
-            Game,
-        }
-        #endregion
-
         public const RenderMode canvasRenderMode = RenderMode.ScreenSpaceOverlay;
         public const bool canvasPixelPerfect = false;
 
@@ -42,19 +34,14 @@ namespace UILib
         public static int scrollSensitivity = 32;
         public static DefaultControls.Resources resources;
 
-        private static bool _initCalled = false;
-
-        public static void Init(string resourceNamespace)
+        static UIUtility()
         {
-            if (_initCalled)
-                return;
-            _initCalled = true;
+            AssetBundle bundle = AssetBundle.LoadFromMemory(Resource.DefaultResources);
 
-            Resource.Namespace = resourceNamespace;
-            AssetBundle bundle = AssetBundle.LoadFromMemory(Resource.DefaultResourceKOI);
-
-            foreach (Sprite sprite in bundle.LoadAllAssets<Sprite>())
+            var sprites = bundle.LoadAllAssets<Sprite>();
+            for (var i = 0; i < sprites.Length; i++)
             {
+                Sprite sprite = sprites[i];
                 switch (sprite.name)
                 {
                     case "Background":
@@ -107,8 +94,10 @@ namespace UILib
 
         public static void SetCustomFont(string customFontName)
         {
-            foreach (Font font in Resources.FindObjectsOfTypeAll<Font>())
+            var fonts = Resources.FindObjectsOfTypeAll<Font>();
+            for (var i = 0; i < fonts.Length; i++)
             {
+                Font font = fonts[i];
                 if (font.name.Equals(customFontName))
                     defaultFont = font;
             }
@@ -136,8 +125,10 @@ namespace UILib
         {
             GameObject go = DefaultControls.CreateInputField(resources);
             go.name = objectName;
-            foreach (Text text in go.GetComponentsInChildren<Text>(true))
+            var texts = go.GetComponentsInChildren<Text>(true);
+            for (var i = 0; i < texts.Length; i++)
             {
+                Text text = texts[i];
                 text.font = defaultFont;
                 text.resizeTextForBestFit = true;
                 text.resizeTextMinSize = 2;
@@ -223,8 +214,10 @@ namespace UILib
             GameObject go = DefaultControls.CreateDropdown(resources);
             go.name = objectName;
 
-            foreach (Text text in go.GetComponentsInChildren<Text>(true))
+            var texts = go.GetComponentsInChildren<Text>(true);
+            for (var i = 0; i < texts.Length; i++)
             {
+                Text text = texts[i];
                 text.font = defaultFont;
                 text.resizeTextForBestFit = true;
                 text.resizeTextMinSize = 2;
@@ -237,8 +230,9 @@ namespace UILib
             }
             go.transform.SetParent(parent, false);
 
-            foreach (ScrollRect scrollRect in go.GetComponentsInChildren<ScrollRect>(true))
-                scrollRect.scrollSensitivity = scrollSensitivity;
+            var rects = go.GetComponentsInChildren<ScrollRect>(true);
+            for (var i = 0; i < rects.Length; i++)
+                rects[i].scrollSensitivity = scrollSensitivity;
 
             return go.GetComponent<Dropdown>();
         }
@@ -322,15 +316,14 @@ namespace UILib
             i.type = Image.Type.Sliced;
             i.fillCenter = true;
             i.color = whiteColor;
-            i.sprite = sprite ?? backgroundSprite;
+            i.sprite = sprite == null ? backgroundSprite : sprite;
             return i;
         }
 
-        public static MovableWindow MakeObjectDraggable(RectTransform clickableDragZone, RectTransform draggableObject, bool preventCameraControl = true)
+        public static MovableWindow MakeObjectDraggable(RectTransform clickableDragZone, RectTransform draggableObject)
         {
             MovableWindow mv = clickableDragZone.gameObject.AddComponent<MovableWindow>();
-            mv.toDrag = draggableObject;
-            mv.preventCameraControl = preventCameraControl;
+            mv.ToDrag = draggableObject;
             return mv;
         }
     }

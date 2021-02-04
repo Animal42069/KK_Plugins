@@ -5,7 +5,7 @@ https://www.patreon.com/DeathWeasel
 Plugins for Koikatsu, EmotionCreators, and AI Girl
 
 ## Installation
-1. Install [BepInEx v5.0](https://github.com/BepInEx/BepInEx/releases)
+1. Install [BepInEx v5.3](https://github.com/BepInEx/BepInEx/releases)
 2. Install [BepisPlugins](https://github.com/bbepis/BepisPlugins/releases)
 3. Install [IllusionModdingAPI](https://github.com/IllusionMods/IllusionModdingAPI)
 4. Extract the plugin .zip file to your game folder
@@ -16,7 +16,7 @@ Plugins for Koikatsu, EmotionCreators, and AI Girl
 Plays a sound when the Chara Maker finishes loading. Useful if you spend the load time alt-tabbed.
 
 #### StudioSceneLoadedSound
-**v1.1 - [Download](https://www.patreon.com/posts/32459105)** - For Koikatsu, AI Girl, and Honey Select 2<br/>
+**v1.3 - [Download](https://www.patreon.com/posts/32459105)** - For Koikatsu, AI Girl, and Honey Select 2<br/>
 
 Plays a sound when a Studio scene finishes loading or importing. Useful if you spend the load time for large scenes alt-tabbed.<br/>
 
@@ -37,7 +37,7 @@ v1.2.2 Fixed a patch not working<br/>
 </details>
 
 #### ReloadCharaListOnChange
-**v1.5.1 - [Download](https://github.com/DeathWeasel1337/KK_Plugins/releases/download/v91/KK_ReloadCharaListOnChange.v1.5.1.zip)** - For Koikatsu<br/>
+**v1.5.2 - [Download](https://www.patreon.com/posts/45349791)** - For Koikatsu<br/>
 
 Reloads the list of characters and coordinates in the character maker when any card is added or removed from the folders. Supports adding and removing large numbers of cards at once.<br/>
 
@@ -49,10 +49,11 @@ v1.4 Studio support<br/>
 v1.4.1 Compatibility with BepisPlugins versions higher than r8<br/>
 v1.5 Koikatsu Party compatibility<br/>
 v1.5.1 Create card folders if missing to prevent errors<br/>
+v1.5.2 Prevent reloading when cards in the _autosave folder are changed<br/>
 </details>
 
 #### InvisibleBody
-**v1.3.2 - [Download](https://www.patreon.com/posts/28424780)** - For Koikatsu, Emotion Creators, AI Girl, and Honey Select 2<br/>
+**v1.4 - [Download](https://www.patreon.com/posts/28424780)** - For Koikatsu, Emotion Creators, AI Girl, and Honey Select 2<br/>
 
 Set the Invisible Body toggle for a character in the character maker to hide the body. Any worn clothes or accessories will remain visible.<br/>
 
@@ -66,10 +67,11 @@ v1.2.2 Updated for KK Darkness<br/>
 v1.3 Added a toggle button for Studio, removed hotkey<br/>
 v1.3.1 Fixed accessories and items attached by animations from turning invisible in AI version<br/>
 v1.3.2 Fixed Studio items turning invisible in AI version<br/>
+v1.4 Changes made in Studio apply to all selected characters, keep visible state when replacing characters<br/>
 </details>
 
 #### UncensorSelector
-**v3.10 - [Download](https://www.patreon.com/posts/28204946)** - For Koikatsu, Emotion Creators, AI Girland Honey Select 2<br/>
+**v3.11 - [Download](https://www.patreon.com/posts/28204946)** - For Koikatsu, Emotion Creators, AI Girland Honey Select 2<br/>
 
 Allows you to specify which uncensors individual characters use and removes the mosaic censor. Select an uncensor for your character in the character maker in the Body/General tab or specify a default uncensor to use in the plugin settings. The default uncensor will apply to any character that does not have one selected.<br/>
 
@@ -112,10 +114,11 @@ v3.9 Fix crash with duplicate uncensor GUIDs, implement dick/balls support for A
 v3.9.1 Fix error in Studio resulting from having no uncensors<br/>
 v3.9.2 Fix glossiness being lost on uncensor change, fix monochrome body showing mosaic censor<br/>
 v3.10 Add ability to exclude uncensors from random selection (Thanks Gebo)<br/>
+v3.11 Changes made in Studio apply to all selected characters<br/>
 </details>
 
 #### Subtitles
-**v2.0 - [Download](https://www.patreon.com/posts/27699376)** - For Koikatsu, AI Girl, Honey Select, and Honey Select 2<br/>
+**v2.2 - [Download](https://www.patreon.com/posts/27699376)** - For Koikatsu, AI Girl, Honey Select, Honey Select 2, and Play Club<br/>
 
 For Koikatsu, adds subtitles for H scenes, spoken text in dialogues, and character maker.<br/>
 For AI Girl trial version, adds subtitles for the character maker.<br/>
@@ -130,6 +133,10 @@ v1.5.1 Fixed text wrapping, clarified config description<br/>
 v1.6 HS2 port, removed FontName setting<br/>
 v1.6.1 Fixed text going off screen in HS, fixed the TextAlign config setting not working properly<br/>
 v2.0 Implemented subtitles for VR mode in KK and HS2<br/>
+v2.0.1 Fixed using the wrong object type causing HSceneInstance to bypass null checks<br/>
+v2.0.2 Subtitles are now part of the scene so they can be scoped to XUA translations<br/>
+v2.1 Subtitles for character maker, Fur, Sitri in HS2</br>
+v2.2 Play Club version
 </details>
 
 #### AnimationController
@@ -162,18 +169,23 @@ v2.0.1 Fixed unlock state not saving and loading to coordinates properly<br/>
 </details>
 
 #### EyeShaking
-**v1.1 - [Download](https://www.patreon.com/posts/39984998)** - For Koikatsu<br/>
+**v1.2 - [Download](https://www.patreon.com/posts/39984998)** - For Koikatsu<br/>
 
 Virgins in H scenes will appear to have slightly shaking eye highlights.<br/>
 
 <details><summary>Change Log</summary>
 v1.1 VR support, added toggle to Studio<br/>
+v1.2 Changes made in Studio apply to all selected characters<br/>
 </details>
 
 #### RandomCharacterGenerator
-**v1.0 - [Download](https://github.com/DeathWeasel1337/KK_Plugins/releases/download/v47/KK_RandomCharacterGenerator.v1.0.zip)** - For Koikatsu<br/>
+**v2.0 - [Download](https://www.patreon.com/posts/42250080)** - For Koikatsu<br/>
 
 Generates random characters in the character maker.<br/>
+
+<details><summary>Change Log</summary>
+v2.0 Merged changes from https://github.com/AUTOMATIC1111/KoikatsuMods<br/>
+</details>
 
 #### PoseFolders
 **v1.0 - [Download](https://www.patreon.com/posts/31127973)** - For Koikatsu, AI Girl, and Honey Select 2<br/>
@@ -216,7 +228,7 @@ v1.1 Added a config option to disable the plugin<br/>
 </details>
 
 #### FreeHRandom
-**v1.2 - [Download](https://github.com/DeathWeasel1337/KK_Plugins/releases/download/v91/KK_FreeHRandom.v1.1.1.zip)** - For Koikatsu<br/>
+**v1.2 - [Download](https://www.patreon.com/posts/39984022)** - For Koikatsu<br/>
 Adds buttons to Free H selection screen to get random characters for your H session.<br/>
 
 <details><summary>Change Log</summary>
@@ -226,16 +238,18 @@ v1.2 VR support<br/>
 </details>
 
 #### Colliders
-**v1.1 - [Download](https://www.patreon.com/posts/35243498)** - For Koikatsu, AI Girl, and Honey Select 2<br/>
+**v1.2 - [Download](https://www.patreon.com/posts/35243498)** - For Koikatsu, AI Girl, and Honey Select 2<br/>
 
 Adds floor, breast, hand, and skirt colliders. Colliders can be toggled on and off in Studio and their state saves with the scene.<br/>
 
 <details><summary>Change Log</summary>
 v1.1 Major rewrite, many new features<br/>
+v1.1.1 ModBoneImplantor compatibility<br/>
+v1.2 Changes made in Studio apply to all selected characters<br/>
 </details>
 
 #### MaterialEditor
-**v2.1.4 - [Download](https://www.patreon.com/posts/27881027)** - For Koikatsu, EmotionCreators, AI Girl, and Honey Select 2<br/>
+**v2.4.1 - [Download](https://www.patreon.com/posts/27881027)** - For Koikatsu, EmotionCreators, AI Girl, and Honey Select 2<br/>
 
 MaterialEditor is a plugin that allows you to edit many properties of objects that aren't usually accessible in game. Much like [Marco's clothing overlays](https://github.com/ManlyMarco/Koikatu-Overlay-Mods) you can replace the texture of an item, however with MaterialEditor you can edit much more than clothes. Edit clothes, accessories, hair, and even Studio items.
 
@@ -283,7 +297,15 @@ v2.1 Add copy/paste for material edits, shader optimization<br/>
 v2.1.1 Fix paste button being disabled, blacklist Standard shader from optimization<br/>
 v2.1.2 Fixed meka shader in AI/HS2, added option for exclusion from shader optimization to shader xml<br/>
 v2.1.3 Fixed items being toggled on in the workspace overriding renderer disabled changes<br/>
-v2.1.4 Vlacklist AIT/eyelashes shader from optimization<br/>
+v2.1.4 Blacklist AIT/eyelashes shader from optimization<br/>
+v2.1.5 Fix .obj export<br/>
+v2.2 Added hotkeys for disabling or enabling ShadowCastingMode and ReceiveShadows for all selected items in Studio<br/>
+v2.3 Fix for tongue edits applying to other characters</br>
+v2.3.1 Fix nullref</br>
+v2.4 Dropdown for editing clothes, hair, and accessories in Studio</br>
+v2.4.1 Various bug fixes</br>
+v2.5 PH version</br>
+v2.6 Accessory and Studio support for PH</br>
 </details>
 
 #### MaleJuice
@@ -304,12 +326,13 @@ v1.2.2 Fixed juice textures not loading in HS2 sometimes<br/>
 Allows you to move objects in studio using hotkeys. Press Y/U/I to move along the X/Y/Z axes. You can also use these keys for rotating and scaling, and when scaling you can also press T to scale all axes at once. Hotkeys can be configured in plugin settings.<br/>
 
 #### FKIK
-**v1.1 - [Download](https://www.patreon.com/posts/29928651)** - For Koikatsu, AI Girl, and Honey Select 2<br/>
+**v1.1.1 - [Download](https://www.patreon.com/posts/29928651)** - For Koikatsu, AI Girl, and Honey Select 2<br/>
 
 Enables FK and IK at the same time. Pose characters in IK mode while still being able to adjust skirts, hair, and hands as if they were in FK mode.<br/>
 
 <details><summary>Change Log</summary>
 v1.1 Fix toggles going out of sync, FK being disabled when switching between characters<br/>
+v1.1.1 Fix neck look pattern not loading properly<br/>
 </details>
 
 #### AnimationOverdrive
@@ -336,7 +359,7 @@ v2.0 Added a guide object instead of hotkeys for positioning<br/>
 </details>
 
 #### StudioSceneSettings
-**v1.2.1 - [Download](https://www.patreon.com/posts/32713423)** - For Koikatsu, AI Girl, and Honey Select 2<br/>
+**v1.3 - [Download](https://www.patreon.com/posts/32713423)** - For Koikatsu, AI Girl, and Honey Select 2<br/>
 Allows you to adjust a few more settings for scenes. Changes save and load with the scene data.<br/>
 
 <details><summary>Settings</summary>
@@ -348,10 +371,11 @@ Far Clip Plane<br/>
 <details><summary>Change Log</summary>
 v1.2 Map masking for AI and HS2<br/>
 v1.2.1 Fixed compatibility issues with StudioCustomMasking<br/>
+v1.3 Changes made in Studio apply to all selected characters<br/>
 </details>
 
 #### Pushup
-**v1.2 - [Download](https://www.patreon.com/posts/32668488)** - For Koikatsu and EmotionCreators<br/>
+**v1.3 - [Download](https://www.patreon.com/posts/32668488)** - For Koikatsu and EmotionCreators<br/>
 Provides sliders and setting to shape the breasts of characters when bras or tops are worn. The basic set of sliders will modify the shape of the breasts if the breast sliders if they are below the specified threshhold. Advanced mode lets you fully customize the shape of the breasts.<br/>
 
 <details><summary>Change Log</summary>
@@ -361,6 +385,7 @@ v1.1.1 Force ABMX update on clothing state change<br/>
 v1.1.2 Unlock sliders when chest tab is clicked after a delay to prevent sliders being locked<br/>
 v1.1.3.1 Fix Pushup not working properly in main game mode, fix Pushup not being applied on character maker load<br/>
 v1.2 EmotionCreators version<br/>
+v1.3 Changes made in Studio apply to all selected characters<br/>
 </details>
 
 #### PoseQuickLoad
@@ -374,12 +399,44 @@ Note: You MUST enable this option in the plugin settings (press F1 and search th
 This plugin will save .png files from your userdata folder to the scene data so anyone else can load the scene properly without needing the same .png file.<br/>
 
 #### MakerDefaults
-**v1.0 - [Download](https://www.patreon.com/posts/39323239)** - For Koikatsu, Emotion Creators, AI Girl, and Honey Select 2<br/>
+**v1.0.1 - [Download](https://www.patreon.com/posts/39323239)** - For Koikatsu, Emotion Creators, AI Girl, and Honey Select 2<br/>
 Allows you to set default settings of the character maker so you don't have to set the same values manually every time.<br/>
+
+<details><summary>Change Log</summary>
+v1.0.1 KKAPI compatibility<br/>
+</details>
 
 #### StudioCustomMasking
 **v1.0 - [Download](https://www.patreon.com/posts/40214619)** - For Koikatsu, AI Girl, and Honey Select 2<br/>
 Allows you to add map masking functionality for maps made out of items in Studio.<br/>
+
+#### ItemBlacklist
+**v1.1 - [Download](https://www.patreon.com/posts/41607128)** - For Koikatsu and EmotionCreators<br/>
+Right click an item in the character maker to hide it from your lists<br/>
+
+<details><summary>Change Log</summary>
+v1.1 Item info shows Asset and AssetBundle, better UI<br/>
+</details>
+
+#### FadeAdjuster
+**v1.0 - [Download](https://www.patreon.com/posts/41820329)** - For Koikatsu<br/>
+Allows you to adjust fade color or disable the fade in and out effect.<br/>
+
+#### Profile
+**v1.0 - [Download](https://www.patreon.com/posts/43152413)** - For Koikatsu and EmotionCreators<br/>
+A big textbox in the character creator where you can write a character description.<br/>
+
+#### Autosave
+**v1.0.1 - [Download](https://www.patreon.com/posts/44708282)** - For Koikatsu, EmotionCreators, AI Girl, Honey Select, Honey Select 2, Play Club, Play Home, and SBPR<br/>
+Automatically saves cards in the character maker and scenes in Studio every few minutes.<br/>
+
+#### EyeControl
+**v1.0.1 - [Download](https://www.patreon.com/posts/45075996)** - For Koikatsu, EmotionCreators, AI Girl, and Honey Select 2<br/>
+Allows you to set a max eye openness, setting it to zero would let you create a character with permanently closed eyes. Can also disable a character's blinking.<br/>
+
+#### AccessoryQuickRemove
+**v1.0 - [Download](https://www.patreon.com/posts/46832511)** - For Koikatsu and EmotionCreators<br/>
+Quickly remove accessories by pressing the delete key in the character maker.<br/>
 
 #### InputHotkeyBlock
 Moved to the [BepInEx.Utility](https://github.com/BepInEx/BepInEx.Utility) repo.<br/>

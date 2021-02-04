@@ -3,13 +3,13 @@ using BepInEx.Logging;
 using ChaCustom;
 using ExtensibleSaveFormat;
 using HarmonyLib;
+using KKAPI;
 using KKAPI.Maker;
 using System;
 using System.IO;
 using System.Reflection;
 using System.Threading;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 using Timer = System.Timers.Timer;
 
 namespace KK_Plugins
@@ -17,26 +17,23 @@ namespace KK_Plugins
     /// <summary>
     /// Watches the character folders for changes and updates the character/coordinate list in the chara maker and studio.
     /// </summary>
-    [BepInDependency(KKAPI.KoikatuAPI.GUID)]
-    [BepInDependency(ExtendedSave.GUID)]
+    [BepInDependency(KoikatuAPI.GUID, KoikatuAPI.VersionConst)]
+    [BepInDependency(ExtendedSave.GUID, ExtendedSave.Version)]
     [BepInPlugin(GUID, PluginName, Version)]
     public partial class ReloadCharaListOnChange : BaseUnityPlugin
     {
         public const string GUID = "com.deathweasel.bepinex.reloadcharalistonchange";
         public const string PluginName = "Reload Character List On Change";
         public const string PluginNameInternal = Constants.Prefix + "_ReloadCharaListOnChange";
-        public const string Version = "1.5.1";
+        public const string Version = "1.5.2";
         internal static new ManualLogSource Logger;
         private static FileSystemWatcher CharacterCardWatcher;
         private static FileSystemWatcher CoordinateCardWatcher;
         private static FileSystemWatcher StudioFemaleCardWatcher;
         private static FileSystemWatcher StudioMaleCardWatcher;
         private static FileSystemWatcher StudioCoordinateCardWatcher;
-        private static bool DoRefresh = false;
-        private static bool EventFromCharaMaker = false;
-        private static bool InCharaMaker = false;
-        private static CustomCharaFile CustomCharaFileInstance;
-        private static CustomCoordinateFile CustomCoordinateFileInstance;
+        private static bool DoRefresh;
+        private static bool EventFromCharaMaker;
         private static Studio.CharaList StudioFemaleListInstance;
         private static Studio.CharaList StudioMaleListInstance;
         private static object StudioCoordinateListInstance;
@@ -53,16 +50,17 @@ namespace KK_Plugins
             Directory.CreateDirectory(CC.Paths.MaleCardPath);
             Directory.CreateDirectory(CC.Paths.CoordinateCardPath);
 
-            SceneManager.sceneUnloaded += SceneUnloaded;
+            MakerAPI.MakerFinishedLoading += MakerAPI_MakerFinishedLoading;
+            MakerAPI.MakerExiting += MakerAPI_MakerExiting;
 
             var harmony = Harmony.CreateAndPatchAll(typeof(Hooks));
             harmony.Patch(typeof(Studio.MPCharCtrl).GetNestedType("CostumeInfo", BindingFlags.NonPublic).GetMethod("InitFileList", AccessTools.all),
-                          new HarmonyMethod(typeof(Hooks).GetMethod(nameof(Hooks.StudioCoordinateListPrefix), AccessTools.all)), null);
+                          new HarmonyMethod(typeof(Hooks).GetMethod(nameof(Hooks.StudioCoordinateListPrefix), AccessTools.all)));
         }
         /// <summary>
         /// On a game update run the actual refresh. It must be run from an update or it causes all sorts of errors.
         /// </summary>
-        internal void Update()
+        private void Update()
         {
             if (EventFromCharaMaker && DoRefresh)
             {
@@ -86,8 +84,11 @@ namespace KK_Plugins
         /// <summary>
         /// When cards are added or removed from the folder set a flag
         /// </summary>
-        private static void CardEvent(CardEventType eventType)
+        private static void CardEvent(string filePath, CardEventType eventType)
         {
+            if (filePath.Contains("_autosave"))
+                return;
+
             //Needs to be locked since dumping a bunch of cards in the folder will trigger this event a whole bunch of times that all run at once
             rwlock.EnterWriteLock();
 
@@ -126,7 +127,7 @@ namespace KK_Plugins
         {
             try
             {
-                //Turn off resolving to prevent spam since modded stuff isn't relevent for making this list.
+                //Turn off resolving to prevent spam since modded stuff isn't relevant for making this list.
                 ExtendedSave.LoadEventsEnabled = false;
                 switch (EventType)
                 {
@@ -134,17 +135,17 @@ namespace KK_Plugins
                         var initializeChara = typeof(CustomCharaFile).GetMethod("Initialize", AccessTools.all);
                         if (initializeChara != null)
                             if (initializeChara.GetParameters().Length == 0)
-                                initializeChara.Invoke(CustomCharaFileInstance, null);
+                                initializeChara.Invoke(FindObjectOfType<CustomCharaFile>(), null);
                             else
-                                initializeChara.Invoke(CustomCharaFileInstance, new object[] { true, false });
+                                initializeChara.Invoke(FindObjectOfType<CustomCharaFile>(), new object[] { true, false });
                         break;
                     case CardEventType.CharaMakerCoordinate:
                         var initializeCoordinate = typeof(CustomCoordinateFile).GetMethod("Initialize", AccessTools.all);
                         if (initializeCoordinate != null)
                             if (initializeCoordinate.GetParameters().Length == 0)
-                                initializeCoordinate.Invoke(CustomCoordinateFileInstance, null);
+                                initializeCoordinate.Invoke(FindObjectOfType<CustomCoordinateFile>(), null);
                             else
-                                initializeCoordinate.Invoke(CustomCoordinateFileInstance, new object[] { true, false });
+                                initializeCoordinate.Invoke(FindObjectOfType<CustomCoordinateFile>(), new object[] { true, false });
                         break;
                     case CardEventType.StudioFemale:
                         StudioFemaleListInstance.InitCharaList(true);
@@ -171,22 +172,41 @@ namespace KK_Plugins
             }
         }
         /// <summary>
+        /// Initialize the character and coordinate card file watcher when the chara maker starts
+        /// </summary>
+        private void MakerAPI_MakerFinishedLoading(object sender, EventArgs e)
+        {
+            CharacterCardWatcher = new FileSystemWatcher();
+            CharacterCardWatcher.Path = Singleton<CustomBase>.Instance.modeSex == 0 ? CC.Paths.MaleCardPath : CC.Paths.FemaleCardPath;
+            CharacterCardWatcher.NotifyFilter = NotifyFilters.FileName;
+            CharacterCardWatcher.Filter = "*.png";
+            CharacterCardWatcher.EnableRaisingEvents = true;
+            CharacterCardWatcher.Created += (o, ee) => CardEvent(ee.FullPath, CardEventType.CharaMakerCharacter);
+            CharacterCardWatcher.Deleted += (o, ee) => CardEvent(ee.FullPath, CardEventType.CharaMakerCharacter);
+            CharacterCardWatcher.IncludeSubdirectories = true;
+
+            CoordinateCardWatcher = new FileSystemWatcher();
+            CoordinateCardWatcher.Path = CC.Paths.CoordinateCardPath;
+            CoordinateCardWatcher.NotifyFilter = NotifyFilters.FileName;
+            CoordinateCardWatcher.Filter = "*.png";
+            CoordinateCardWatcher.EnableRaisingEvents = true;
+            CoordinateCardWatcher.Created += (o, ee) => CardEvent(ee.FullPath, CardEventType.CharaMakerCoordinate);
+            CoordinateCardWatcher.Deleted += (o, ee) => CardEvent(ee.FullPath, CardEventType.CharaMakerCoordinate);
+            CoordinateCardWatcher.IncludeSubdirectories = true;
+        }
+        /// <summary>
         /// End the file watcher and set variables back to default for next time the chara maker is started
         /// </summary>
-        private void SceneUnloaded(Scene s)
+        private void MakerAPI_MakerExiting(object sender, EventArgs e)
         {
-            if (s.name == "CustomScene")
-            {
-                InCharaMaker = false;
-                DoRefresh = false;
-                EventFromCharaMaker = false;
-                CardTimer?.Dispose();
-                CardTimer = null;
-                CharacterCardWatcher?.Dispose();
-                CharacterCardWatcher = null;
-                CoordinateCardWatcher?.Dispose();
-                CoordinateCardWatcher = null;
-            }
+            DoRefresh = false;
+            EventFromCharaMaker = false;
+            CardTimer?.Dispose();
+            CardTimer = null;
+            CharacterCardWatcher?.Dispose();
+            CharacterCardWatcher = null;
+            CoordinateCardWatcher?.Dispose();
+            CoordinateCardWatcher = null;
         }
 
         public enum CardEventType { CharaMakerCharacter, CharaMakerCoordinate, StudioMale, StudioFemale, StudioCoordinate }

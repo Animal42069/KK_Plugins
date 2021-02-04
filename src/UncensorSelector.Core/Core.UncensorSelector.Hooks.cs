@@ -16,13 +16,18 @@ namespace KK_Plugins
         /// Do color matching whenever the body texture is changed
         /// </summary>
         [HarmonyPrefix, HarmonyPatch(typeof(ChaControl), nameof(ChaControl.CreateBodyTexture))]
-        internal static void CreateBodyTexture(ChaControl __instance) => UncensorSelector.GetController(__instance)?.UpdateSkinColor();
+        private static void CreateBodyTexture(ChaControl __instance)
+        {
+            var controller = UncensorSelector.GetController(__instance);
+            if (controller != null)
+                controller.UpdateSkinColor();
+        }
 
         /// <summary>
         /// Postfix patch to check underwear clothing state and hide objDanTop when the clothes are on. Would be better as a transpiler.
         /// </summary>
         [HarmonyPostfix, HarmonyPatch(typeof(ChaControl), "UpdateVisible")]
-        internal static void UpdateVisible(ChaControl __instance, bool ___drawSimple, bool ___confSon, List<bool> ___lstActive)
+        private static void UpdateVisible(ChaControl __instance, bool ___drawSimple, bool ___confSon, List<bool> ___lstActive)
         {
             if (!___drawSimple && __instance.cmpBody && __instance.cmpBody.targetEtc.objDanTop)
             {
@@ -42,7 +47,12 @@ namespace KK_Plugins
         /// Do color matching whenever the body texture is changed
         /// </summary>
         [HarmonyPrefix, HarmonyPatch(typeof(ChaControl), nameof(ChaControl.SetBodyBaseMaterial))]
-        internal static void SetBodyBaseMaterial(ChaControl __instance) => UncensorSelector.GetController(__instance)?.UpdateSkinColor();
+        private static void SetBodyBaseMaterial(ChaControl __instance)
+        {
+            var controller = UncensorSelector.GetController(__instance);
+            if (controller != null)
+                controller.UpdateSkinColor();
+        }
 #endif
 
 
@@ -51,32 +61,52 @@ namespace KK_Plugins
         /// LineMask texture assigned to the material, toggled on and off for any color matching parts along with the body
         /// </summary>
         [HarmonyPrefix, HarmonyPatch(typeof(ChaControl), nameof(ChaControl.VisibleAddBodyLine))]
-        internal static void VisibleAddBodyLine(ChaControl __instance) => UncensorSelector.GetController(__instance)?.UpdateSkinLine();
+        private static void VisibleAddBodyLine(ChaControl __instance)
+        {
+            var controller = UncensorSelector.GetController(__instance);
+            if (controller != null)
+                controller.UpdateSkinLine();
+        }
 
         /// <summary>
         /// Skin gloss slider level, as assigned in the character maker. This corresponds to the red coloring in the DetailMask texture.
         /// </summary>
         [HarmonyPrefix, HarmonyPatch(typeof(ChaControl), nameof(ChaControl.ChangeSettingSkinGlossPower))]
-        internal static void ChangeSettingSkinGlossPower(ChaControl __instance) => UncensorSelector.GetController(__instance)?.UpdateSkinGloss();
+        private static void ChangeSettingSkinGlossPower(ChaControl __instance)
+        {
+            var controller = UncensorSelector.GetController(__instance);
+            if (controller != null)
+                controller.UpdateSkinGloss();
+        }
 #endif
 
         /// <summary>
         /// Demosaic
         /// </summary>
         [HarmonyPrefix, HarmonyPatch(typeof(ChaControl), "LateUpdateForce")]
-        internal static void LateUpdateForce(ChaControl __instance) => __instance.hideMoz = true;
+        private static void LateUpdateForce(ChaControl __instance) => __instance.hideMoz = true;
 
         [HarmonyPrefix, HarmonyPatch(typeof(ChaControl), nameof(ChaControl.CreateBodyTexture))]
-        internal static void CreateBodyTexturePrefix(ChaControl __instance) => UncensorSelector.CurrentBodyGUID = UncensorSelector.GetController(__instance)?.BodyData?.BodyGUID;
+        private static void CreateBodyTexturePrefix(ChaControl __instance)
+        {
+            var controller = UncensorSelector.GetController(__instance);
+            if (controller != null && controller.BodyData != null)
+                UncensorSelector.CurrentBodyGUID = controller.BodyData.BodyGUID;
+        }
 
         [HarmonyPrefix, HarmonyPatch(typeof(ChaControl), "InitBaseCustomTextureBody")]
-        internal static void InitBaseCustomTextureBodyPrefix(ChaControl __instance) => UncensorSelector.CurrentBodyGUID = UncensorSelector.GetController(__instance)?.BodyData?.BodyGUID;
+        private static void InitBaseCustomTextureBodyPrefix(ChaControl __instance)
+        {
+            var controller = UncensorSelector.GetController(__instance);
+            if (controller != null && controller.BodyData != null)
+                UncensorSelector.CurrentBodyGUID = controller.BodyData.BodyGUID;
+        }
 
         /// <summary>
         /// Modifies the code for string replacement of oo_base, etc.
         /// </summary>
         [HarmonyTranspiler, HarmonyPatch(typeof(ChaControl), nameof(ChaControl.CreateBodyTexture))]
-        internal static IEnumerable<CodeInstruction> CreateBodyTextureTranspiler(IEnumerable<CodeInstruction> instructions)
+        private static IEnumerable<CodeInstruction> CreateBodyTextureTranspiler(IEnumerable<CodeInstruction> instructions)
         {
             List<CodeInstruction> instructionsList = instructions.ToList();
 
@@ -103,14 +133,14 @@ namespace KK_Plugins
                 }
             }
 
-            return instructions;
+            return instructionsList;
         }
 
         /// <summary>
         /// Modifies the code for string replacement of mm_base, etc.
         /// </summary>
         [HarmonyTranspiler, HarmonyPatch(typeof(ChaControl), "InitBaseCustomTextureBody")]
-        internal static IEnumerable<CodeInstruction> InitBaseCustomTextureBodyTranspiler(IEnumerable<CodeInstruction> instructions)
+        private static IEnumerable<CodeInstruction> InitBaseCustomTextureBodyTranspiler(IEnumerable<CodeInstruction> instructions)
         {
             List<CodeInstruction> instructionsList = instructions.ToList();
 
@@ -137,7 +167,30 @@ namespace KK_Plugins
                 }
             }
 
-            return instructions;
+            return instructionsList;
         }
+
+#if KK
+        /// <summary>
+        /// Change the male _low asset to the female _low asset. Female has more bones so trying to change male body to female doesn't work. Load as female and change to male as a workaround.
+        /// </summary>
+        internal static IEnumerable<CodeInstruction> LoadAsyncTranspiler(IEnumerable<CodeInstruction> instructions)
+        {
+            List<CodeInstruction> instructionsList = instructions.ToList();
+
+            foreach (var x in instructionsList)
+            {
+                switch (x.operand?.ToString())
+                {
+                    case "p_cm_body_00_low":
+                        x.opcode = OpCodes.Call;
+                        x.operand = typeof(UncensorSelector).GetMethod(nameof(UncensorSelector.SetMaleBodyLow), AccessTools.all);
+                        break;
+                }
+            }
+
+            return instructionsList;
+        }
+#endif
     }
 }

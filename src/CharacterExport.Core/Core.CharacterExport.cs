@@ -24,15 +24,15 @@ namespace KK_Plugins
         public static ConfigEntry<KeyboardShortcut> CharacterExportHotkey { get; private set; }
         public static ConfigEntry<bool> OpenFolderAfterExport { get; private set; }
 
-        internal void Start()
+        private void Start()
         {
             Logger = base.Logger;
 
-            CharacterExportHotkey = Config.Bind("Keyboard Shortcuts", "Export Characters", new KeyboardShortcut(KeyCode.E, new KeyCode[] { KeyCode.LeftControl }), "Export all currently loaded characters in the game.");
+            CharacterExportHotkey = Config.Bind("Keyboard Shortcuts", "Export Characters", new KeyboardShortcut(KeyCode.E, KeyCode.LeftControl), "Export all currently loaded characters in the game.");
             OpenFolderAfterExport = Config.Bind("Config", "Open Folder After Export", true, "Whether to open the folder after exporting characters.");
         }
 
-        internal void Update()
+        private void Update()
         {
             if (CharacterExportHotkey.Value.IsDown())
                 ExportCharacters();

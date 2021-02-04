@@ -2,8 +2,10 @@
 using BepInEx.Configuration;
 using BepInEx.Logging;
 using HarmonyLib;
+using KKAPI;
 using KKAPI.Chara;
 using KKAPI.Maker;
+using MaterialEditorAPI;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -11,13 +13,20 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Xml;
-using System.Xml.Linq;
 using UniRx;
 using UnityEngine;
-using XUnity.ResourceRedirector;
-using static KK_Plugins.MaterialEditor.MaterialAPI;
+using static MaterialEditorAPI.MaterialAPI;
 #if AI || HS2
 using AIChara;
+using ChaAccessoryComponent = AIChara.CmpAccessory;
+#endif
+#if EC
+using Map;
+#else
+using Studio;
+#endif
+#if PH
+using ChaControl = Human;
 #endif
 
 namespace KK_Plugins.MaterialEditor
@@ -25,14 +34,18 @@ namespace KK_Plugins.MaterialEditor
     /// <summary>
     /// MaterialEditor plugin base
     /// </summary>
-    [BepInDependency(KKAPI.KoikatuAPI.GUID)]
-    [BepInPlugin(GUID, PluginName, Version)]
-    public partial class MaterialEditorPlugin : BaseUnityPlugin
+    [BepInDependency(KoikatuAPI.GUID, KoikatuAPI.VersionConst)]
+    [BepInDependency(XUnity.ResourceRedirector.Constants.PluginData.Identifier, XUnity.ResourceRedirector.Constants.PluginData.Version)]
+#if !PH
+    [BepInDependency(Sideloader.Sideloader.GUID, Sideloader.Sideloader.Version)]
+#endif
+    [BepInPlugin(PluginGUID, PluginName, PluginVersion)]
+    public partial class MaterialEditorPlugin : MaterialEditorAPI.MaterialEditorPluginBase
     {
         /// <summary>
         /// MaterialEditor plugin GUID
         /// </summary>
-        public const string GUID = "com.deathweasel.bepinex.materialeditor";
+        public const string PluginGUID = "com.deathweasel.bepinex.materialeditor";
         /// <summary>
         /// MaterialEditor plugin name
         /// </summary>
@@ -41,36 +54,62 @@ namespace KK_Plugins.MaterialEditor
         /// <summary>
         /// MaterialEditor plugin version
         /// </summary>
-        public const string Version = "2.1.4";
-        internal static new ManualLogSource Logger;
+        public const string PluginVersion = "2.6";
 
-        internal const string FileExt = ".png";
-        internal const string FileFilter = "Images (*.png;.jpg)|*.png;*.jpg|All files|*.*";
+#if KK || EC
+        internal static ConfigEntry<bool> RimRemover { get; private set; }
+#endif
+        internal static ConfigEntry<KeyboardShortcut> DisableShadowCastingHotkey { get; private set; }
+        internal static ConfigEntry<KeyboardShortcut> EnableShadowCastingHotkey { get; private set; }
+        internal static ConfigEntry<KeyboardShortcut> ResetShadowCastingHotkey { get; private set; }
+        internal static ConfigEntry<KeyboardShortcut> DisableReceiveShadows { get; private set; }
+        internal static ConfigEntry<KeyboardShortcut> EnableReceiveShadows { get; private set; }
+        internal static ConfigEntry<KeyboardShortcut> ResetReceiveShadows { get; private set; }
+
         /// <summary>
-        /// Path where textures will be exported
+        /// Parts of the body
         /// </summary>
-        public static readonly string ExportPath = Path.Combine(Paths.GameRootPath, @"UserData\MaterialEditor");
+#if AI || HS2
+        public static HashSet<string> BodyParts = new HashSet<string> {
+            "o_eyebase_L", "o_eyebase_R", "o_eyelashes", "o_eyeshadow", "o_head", "o_namida", "o_tang", "o_tooth", "o_body_cf", "o_mnpa", "o_mnpb", "cm_o_dan00", "o_tang",
+            "cm_o_dan00", "o_tang", "o_silhouette_cf", "o_body_cf", "o_body_cm", "o_head" };
+#elif KK || EC
+        public static HashSet<string> BodyParts = new HashSet<string> {
+            "cf_O_tooth", "cf_O_canine", "cf_O_tang", "o_tang", "n_tang", "n_tang_silhouette",  "cf_O_eyeline", "cf_O_eyeline_low", "cf_O_mayuge", "cf_Ohitomi_L", "cf_Ohitomi_R",
+            "cf_Ohitomi_L02", "cf_Ohitomi_R02", "cf_O_noseline", "cf_O_namida_L", "cf_O_namida_M", "o_dankon", "o_gomu", "o_dan_f", "cf_O_namida_S", "cf_O_gag_eye_00", "cf_O_gag_eye_01",
+            "cf_O_gag_eye_02", "o_shadowcaster", "o_shadowcaster_cm", "o_mnpa", "o_mnpb", "n_body_silhouette", "o_body_a", "cf_O_face" };
+#elif PH
+        public static HashSet<string> BodyParts = new HashSet<string> {
+            "cf_O_eyekage1", "cf_O_ha", "cf_O_head", "cf_O_matuge", "cf_O_mayuge", "cf_O_sita", "cf_O_eyehikari_L", "cf_O_eyewhite_L", "cf_O_eyehikari_R", "cf_O_eyewhite_R",
+            "cf_O_namida01", "cf_O_namida02", "cf_O_namida03", "cf_O_body_00", "cf_O_mnpk", "cf_O_mnpk_00_00", "cf_O_mnpk_00_01", "cf_O_mnpk_00_02", "cf_O_mnpk_00_03",
+            "cf_O_mnpk_00_04", "cf_O_mnpk_00_05", "cf_O_nail", "cf_O_tang", "cf_O_tikubiL_00", "cf_O_tikubiR_00","cm_O_eye_L", "cm_O_eye_R", "cm_O_ha", "cm_O_head", "cm_O_mayuge",
+            "cm_O_sita", "cm_O_eyeHi_R", "cm_O_eyeHi_L", "O_hige00", "O_body", "O_mnpk", "cm_O_dan00", "cm_O_dan_f", "cm_O_tang" };
+#endif
+
         /// <summary>
-        /// Saved material edits
+        /// Parts of the body hierarchy which contains clothes and should not be traversed
         /// </summary>
-        public static CopyContainer CopyData = new CopyContainer();
+#if AI || HS2
+        public static HashSet<string> ClothesParts = new HashSet<string> { "ct_clothesTop", "ct_clothesBot", "ct_inner_t", "ct_inner_b", "ct_gloves", "ct_panst", "ct_socks", "ct_shoes" };
+#elif KK
+        public static HashSet<string> ClothesParts = new HashSet<string> { "ct_clothesTop", "ct_clothesBot", "ct_bra", "ct_shorts", "ct_gloves", "ct_panst", "ct_socks", "ct_shoes_inner", "ct_shoes_outer" };
+#elif EC
+        public static HashSet<string> ClothesParts = new HashSet<string> { "ct_clothesTop", "ct_clothesBot", "ct_bra", "ct_shorts", "ct_gloves", "ct_panst", "ct_socks", "ct_shoes" };
+#elif PH
+        public static HashSet<string> ClothesParts = new HashSet<string> { "Wears" };
+#endif
 
-        internal static Dictionary<string, ShaderData> LoadedShaders = new Dictionary<string, ShaderData>();
-        internal static SortedDictionary<string, Dictionary<string, ShaderPropertyData>> XMLShaderProperties = new SortedDictionary<string, Dictionary<string, ShaderPropertyData>>();
-
-        internal static ConfigEntry<float> UIScale { get; private set; }
-        internal static ConfigEntry<float> UIWidth { get; private set; }
-        internal static ConfigEntry<float> UIHeight { get; private set; }
-        internal static ConfigEntry<bool> WatchTexChanges { get; private set; }
-        internal static ConfigEntry<bool> ShaderOptimization { get; private set; }
+#if KK || EC
+        /// <summary>
+        /// Parts of the mouth that need special handling
+        /// </summary>
+        public static HashSet<string> MouthParts = new HashSet<string> { "cf_O_tooth", "cf_O_canine", "cf_O_tang", "o_tang", "n_tang" };
+#endif
 
         internal void Main()
         {
-            Logger = base.Logger;
-            Directory.CreateDirectory(ExportPath);
-
-            MakerAPI.MakerExiting += (s, e) => UI.Visible = false;
-            CharacterApi.RegisterExtraBehaviour<MaterialEditorCharaController>(GUID);
+            MakerAPI.MakerExiting += (s, e) => MaterialEditorUI.Visible = false;
+            CharacterApi.RegisterExtraBehaviour<MaterialEditorCharaController>(PluginGUID);
             AccessoriesApi.SelectedMakerAccSlotChanged += AccessoriesApi_SelectedMakerAccSlotChanged;
             AccessoriesApi.AccessoryKindChanged += AccessoriesApi_AccessoryKindChanged;
             AccessoriesApi.AccessoryTransferred += AccessoriesApi_AccessoryTransferred;
@@ -78,17 +117,24 @@ namespace KK_Plugins.MaterialEditor
             AccessoriesApi.AccessoriesCopied += AccessoriesApi_AccessoriesCopied;
 #endif
 
-            UIScale = Config.Bind("Config", "UI Scale", 1.75f, new ConfigDescription("Controls the size of the window.", new AcceptableValueRange<float>(1f, 3f), new ConfigurationManagerAttributes { Order = 5 }));
-            UIWidth = Config.Bind("Config", "UI Width", 0.3f, new ConfigDescription("Controls the size of the window.", new AcceptableValueRange<float>(0f, 1f), new ConfigurationManagerAttributes { Order = 4, ShowRangeAsPercent = false }));
-            UIHeight = Config.Bind("Config", "UI Height", 0.3f, new ConfigDescription("Controls the size of the window.", new AcceptableValueRange<float>(0f, 1f), new ConfigurationManagerAttributes { Order = 3, ShowRangeAsPercent = false }));
-            WatchTexChanges = Config.Bind("Config", "Watch File Changes", true, new ConfigDescription("Watch for file changes and reload textures on change. Can be toggled in the UI.", null, new ConfigurationManagerAttributes { Order = 2 }));
-            ShaderOptimization = Config.Bind("Config", "Shader Optimization", true, new ConfigDescription("Replaces every loaded shader with the MaterialEditor copy of the shader. Reduces the number of copies of shaders loaded which reduces RAM usage and improves performance.", null, new ConfigurationManagerAttributes { Order = 1 }));
-            WatchTexChanges.SettingChanged += WatchTexChanges_SettingChanged;
+#if KK || EC
+            RimRemover = Config.Bind("Config", "Remove Rim Lighting", false, new ConfigDescription("Remove rim lighting for all characters clothes, hair, accessories, etc. Will save modified values to the card.\n\nUse with caution as it cannot be undone except by manually resetting all the changes.", null, new ConfigurationManagerAttributes { Order = 0, IsAdvanced = true }));
+#endif
+            DisableShadowCastingHotkey = Config.Bind("Keyboard Shortcuts", "Disable ShadowCasting", new KeyboardShortcut(KeyCode.M, KeyCode.LeftControl), "Disable ShadowCasting for all selected items and their child items in Studio");
+            EnableShadowCastingHotkey = Config.Bind("Keyboard Shortcuts", "Enable ShadowCasting", new KeyboardShortcut(KeyCode.M, KeyCode.LeftAlt), "Enable ShadowCasting for all selected items and their child items in Studio");
+            ResetShadowCastingHotkey = Config.Bind("Keyboard Shortcuts", "Reset ShadowCasting", new KeyboardShortcut(KeyCode.M, KeyCode.LeftControl, KeyCode.LeftAlt), "Reset ShadowCasting for all selected items and their child items in Studio");
+            DisableReceiveShadows = Config.Bind("Keyboard Shortcuts", "Disable ReceiveShadows", new KeyboardShortcut(KeyCode.N, KeyCode.LeftControl), "Disable ReceiveShadows for all selected items and their child items in Studio");
+            EnableReceiveShadows = Config.Bind("Keyboard Shortcuts", "Enable ReceiveShadows", new KeyboardShortcut(KeyCode.N, KeyCode.LeftAlt), "Enable ReceiveShadows for all selected items and their child items in Studio");
+            ResetReceiveShadows = Config.Bind("Keyboard Shortcuts", "Reset ReceiveShadows", new KeyboardShortcut(KeyCode.N, KeyCode.LeftControl, KeyCode.LeftAlt), "Reset ReceiveShadows for all selected items and their child items in Studio");
+#if PH
+            //Disable ShaderOptimization since it doesn't work properly
+            ShaderOptimization.Value = false;
+#endif
 
             var harmony = Harmony.CreateAndPatchAll(typeof(Hooks));
 
 #if KK || EC
-            //Hooks for transfering accessories (MoreAccessories compatibility)
+            //Hooks for transferring accessories (MoreAccessories compatibility)
             foreach (var method in typeof(ChaCustom.CvsAccessoryChange).GetMethods(AccessTools.all).Where(x => x.Name.Contains("<Start>m__4")))
                 harmony.Patch(method, new HarmonyMethod(typeof(Hooks).GetMethod(nameof(Hooks.AccessoryTransferHook), AccessTools.all)));
 #elif AI || HS2
@@ -102,62 +148,6 @@ namespace KK_Plugins.MaterialEditor
 #endif
             StartCoroutine(LoadXML());
             StartCoroutine(GetUncensorSelectorParts());
-
-            ResourceRedirection.RegisterAssetLoadedHook(HookBehaviour.OneCallbackPerResourceLoaded, AssetLoadedHook);
-        }
-
-        //internal void Update()
-        //{
-        //    if (Input.GetKeyDown(KeyCode.C))
-        //    {
-        //        Dictionary<string, int> shaders = new Dictionary<string, int>();
-        //        foreach (var shader in Resources.FindObjectsOfTypeAll<Shader>())
-        //            if (shaders.ContainsKey(shader.name))
-        //                shaders[shader.name]++;
-        //            else
-        //                shaders[shader.name] = 1;
-        //        foreach (var shader in shaders)
-        //            Logger.LogInfo($"Shader:{shader.Key} {shader.Value}");
-        //    }
-        //}
-
-        /// <summary>
-        /// Every time an asset is loaded, swap its shader for the one loaded by MaterialEditor. This reduces the number of instances of a shader once they are cleaned up by garbage collection
-        /// which reduce RAM usage, etc. Also fixes KK mods in EC by swapping them to the equivalent EC shader.
-        /// </summary>
-        private void AssetLoadedHook(AssetLoadedContext context)
-        {
-            if (!ShaderOptimization.Value) return;
-
-            if (context.Asset is GameObject go)
-            {
-                foreach (var rend in go.GetComponentsInChildren<Renderer>())
-                {
-                    foreach (var mat in rend.materials)
-                    {
-                        if (LoadedShaders.TryGetValue(mat.shader.name, out var shaderData) && shaderData.Shader != null && shaderData.ShaderOptimization)
-                        {
-                            int renderQueue = mat.renderQueue;
-                            mat.shader = shaderData.Shader;
-                            mat.renderQueue = renderQueue;
-                        }
-                    }
-                }
-            }
-            else if (context.Asset is Material mat)
-            {
-                if (LoadedShaders.TryGetValue(mat.shader.name, out var shaderData) && shaderData.Shader != null && shaderData.ShaderOptimization)
-                {
-                    int renderQueue = mat.renderQueue;
-                    mat.shader = shaderData.Shader;
-                    mat.renderQueue = renderQueue;
-                }
-            }
-            else if (context.Asset is Shader shader)
-            {
-                if (LoadedShaders.TryGetValue(shader.name, out var shaderData) && shaderData.Shader != null && shaderData.ShaderOptimization)
-                    context.Asset = shaderData.Shader;
-            }
         }
 
         /// <summary>
@@ -177,242 +167,259 @@ namespace KK_Plugins.MaterialEditor
                 BodyParts.Add(parts);
         }
 
-        private void WatchTexChanges_SettingChanged(object sender, EventArgs e)
+        private static void AccessoriesApi_AccessoryTransferred(object sender, AccessoryTransferEventArgs e)
         {
-            if (!WatchTexChanges.Value)
-                UI.TexChangeWatcher?.Dispose();
+            var controller = GetCharaController(MakerAPI.GetCharacterControl());
+            if (controller != null)
+                controller.AccessoryTransferredEvent(sender, e);
         }
-        private void AccessoriesApi_AccessoryTransferred(object sender, AccessoryTransferEventArgs e) => GetCharaController(MakerAPI.GetCharacterControl())?.AccessoryTransferredEvent(sender, e);
-        private void AccessoriesApi_AccessoryKindChanged(object sender, AccessorySlotEventArgs e) => GetCharaController(MakerAPI.GetCharacterControl())?.AccessoryKindChangeEvent(sender, e);
-        private void AccessoriesApi_SelectedMakerAccSlotChanged(object sender, AccessorySlotEventArgs e) => GetCharaController(MakerAPI.GetCharacterControl())?.AccessorySelectedSlotChangeEvent(sender, e);
+        private static void AccessoriesApi_AccessoryKindChanged(object sender, AccessorySlotEventArgs e)
+        {
+            var controller = GetCharaController(MakerAPI.GetCharacterControl());
+            if (controller != null)
+                controller.AccessoryKindChangeEvent(sender, e);
+        }
+        private static void AccessoriesApi_SelectedMakerAccSlotChanged(object sender, AccessorySlotEventArgs e)
+        {
+            var controller = GetCharaController(MakerAPI.GetCharacterControl());
+            if (controller != null)
+                controller.AccessorySelectedSlotChangeEvent(sender, e);
+        }
 #if KK
-        private void AccessoriesApi_AccessoriesCopied(object sender, AccessoryCopyEventArgs e) => GetCharaController(MakerAPI.GetCharacterControl())?.AccessoriesCopiedEvent(sender, e);
+        private static void AccessoriesApi_AccessoriesCopied(object sender, AccessoryCopyEventArgs e)
+        {
+            var controller = GetCharaController(MakerAPI.GetCharacterControl());
+            if (controller != null)
+                controller.AccessoriesCopiedEvent(sender, e);
+        }
 #endif
 
-        private IEnumerator LoadXML()
+        private static IEnumerator LoadXML()
         {
+#if PH
+            yield return null;
+#else
             yield return new WaitUntil(() => AssetBundleManager.ManifestBundlePack.Count != 0);
-
-            var loadedManifests = Sideloader.Sideloader.Manifests;
-            XMLShaderProperties["default"] = new Dictionary<string, ShaderPropertyData>();
+#endif
 
             using (Stream stream = Assembly.GetExecutingAssembly().GetManifestResourceStream($"{nameof(KK_Plugins)}.Resources.default.xml"))
-            using (XmlReader reader = XmlReader.Create(stream))
-                LoadXML(XDocument.Load(reader).Element("MaterialEditor"));
+                if (stream != null)
+                    using (XmlReader reader = XmlReader.Create(stream))
+                    {
+                        XmlDocument doc = new XmlDocument();
+                        doc.Load(reader);
+                        LoadXML(doc.DocumentElement);
+                    }
 
+#if PH
+            var di = new DirectoryInfo("abdata/MaterialEditor");
+            if (di.Exists)
+            {
+                var files = di.GetFiles("*.xml", SearchOption.AllDirectories);
+                for (var i = 0; i < files.Length; i++)
+                {
+                    var fileName = files[i].FullName;
+                    try
+                    {
+                        XmlDocument doc = new XmlDocument();
+                        doc.Load(fileName);
+                        LoadXML(doc.DocumentElement);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Log(LogLevel.Error, $"Failed to load {PluginNameInternal} xml file.");
+                        Logger.Log(LogLevel.Error, ex);
+                    }
+                }
+            }
+#else
+            var loadedManifests = Sideloader.Sideloader.Manifests;
             foreach (var manifest in loadedManifests.Values)
             {
-                LoadXML(manifest.manifestDocument?.Root?.Element(PluginNameInternal));
-                LoadXML(manifest.manifestDocument?.Root?.Element("MaterialEditor"));
+                var element = manifest.manifestDocument?.Root?.Element("MaterialEditor");
+                if (element == null)
+                    element = manifest.manifestDocument?.Root?.Element(PluginNameInternal);
+                if (element != null)
+                {
+                    //Convert XElement in to XmlElement
+                    var doc = new XmlDocument();
+                    doc.Load(element.CreateReader());
+                    LoadXML(doc.DocumentElement);
+                }
             }
+#endif
         }
 
-        private void LoadXML(XElement materialEditorElement)
+        private static void LoadXML(XmlElement materialEditorElement)
         {
             if (materialEditorElement == null) return;
-
-            foreach (var shaderElement in materialEditorElement.Elements("Shader"))
+            var shaderElements = materialEditorElement.GetElementsByTagName("Shader");
+            foreach (var shaderElementObj in shaderElements)
             {
-                string shaderName = shaderElement.Attribute("Name").Value;
-
-                if (LoadedShaders.ContainsKey(shaderName))
+                if (shaderElementObj != null)
                 {
-                    Destroy(LoadedShaders[shaderName].Shader);
-                    LoadedShaders.Remove(shaderName);
-                }
-                LoadedShaders[shaderName] = new ShaderData(shaderName, shaderElement.Attribute("AssetBundle")?.Value, shaderElement.Attribute("RenderQueue")?.Value, shaderElement.Attribute("Asset")?.Value, shaderElement.Attribute("ShaderOptimization")?.Value);
+                    var shaderElement = (XmlElement)shaderElementObj;
+                    string shaderName = shaderElement.GetAttribute("Name");
 
-                XMLShaderProperties[shaderName] = new Dictionary<string, ShaderPropertyData>();
-
-                foreach (XElement element in shaderElement.Elements("Property"))
-                {
-                    string propertyName = element.Attribute("Name").Value;
-                    ShaderPropertyType propertyType = (ShaderPropertyType)Enum.Parse(typeof(ShaderPropertyType), element.Attribute("Type").Value);
-                    string defaultValue = element.Attribute("DefaultValue")?.Value;
-                    string defaultValueAB = element.Attribute("DefaultValueAssetBundle")?.Value;
-                    string range = element.Attribute("Range")?.Value;
-                    string min = null;
-                    string max = null;
-                    if (!range.IsNullOrWhiteSpace())
+                    if (LoadedShaders.ContainsKey(shaderName))
                     {
-                        var rangeSplit = range.Split(',');
-                        if (rangeSplit.Length == 2)
+                        Destroy(LoadedShaders[shaderName].Shader);
+                        LoadedShaders.Remove(shaderName);
+                    }
+                    var shader = LoadShader(shaderName, shaderElement.GetAttribute("AssetBundle"), shaderElement.GetAttribute("Asset"));
+                    LoadedShaders[shaderName] = new ShaderData(shader, shaderName, shaderElement.GetAttribute("RenderQueue"), shaderElement.GetAttribute("ShaderOptimization"));
+
+                    XMLShaderProperties[shaderName] = new Dictionary<string, ShaderPropertyData>();
+                    var shaderPropertyElements = shaderElement.GetElementsByTagName("Property");
+                    foreach (var shaderPropertyElementObj in shaderPropertyElements)
+                    {
+                        if (shaderPropertyElementObj != null)
                         {
-                            min = rangeSplit[0];
-                            max = rangeSplit[1];
+                            var shaderPropertyElement = (XmlElement)shaderPropertyElementObj;
+
+                            string propertyName = shaderPropertyElement.GetAttribute("Name");
+                            ShaderPropertyType propertyType = (ShaderPropertyType)Enum.Parse(typeof(ShaderPropertyType), shaderPropertyElement.GetAttribute("Type"));
+                            string defaultValue = shaderPropertyElement.GetAttribute("DefaultValue");
+                            string defaultValueAB = shaderPropertyElement.GetAttribute("DefaultValueAssetBundle");
+                            string range = shaderPropertyElement.GetAttribute("Range");
+                            string min = null;
+                            string max = null;
+                            if (!range.IsNullOrWhiteSpace())
+                            {
+                                var rangeSplit = range.Split(',');
+                                if (rangeSplit.Length == 2)
+                                {
+                                    min = rangeSplit[0];
+                                    max = rangeSplit[1];
+                                }
+                            }
+                            ShaderPropertyData shaderPropertyData = new ShaderPropertyData(propertyName, propertyType, defaultValue, defaultValueAB, min, max);
+
+                            XMLShaderProperties["default"][propertyName] = shaderPropertyData;
+                            XMLShaderProperties[shaderName][propertyName] = shaderPropertyData;
                         }
                     }
-                    ShaderPropertyData shaderPropertyData = new ShaderPropertyData(propertyName, propertyType, defaultValue, defaultValueAB, min, max);
-
-                    XMLShaderProperties["default"][propertyName] = shaderPropertyData;
-                    XMLShaderProperties[shaderName][propertyName] = shaderPropertyData;
                 }
             }
         }
 
-        internal static Texture2D TextureFromBytes(byte[] texBytes, TextureFormat format = TextureFormat.ARGB32, bool mipmaps = true)
+        private static Shader LoadShader(string shaderName, string assetBundlePath, string assetPath)
         {
-            if (texBytes == null || texBytes.Length == 0) return null;
+            Shader shader = null;
+            if (assetBundlePath.IsNullOrEmpty())
+            {
+                return shader;
+            }
+            else
+            {
+                if (assetPath.IsNullOrEmpty())
+                {
+                    try
+                    {
+                        if (assetBundlePath.StartsWith("Resources."))
+                        {
+                            AssetBundle bundle = AssetBundle.LoadFromMemory(UILib.Resource.LoadEmbeddedResource($"{nameof(KK_Plugins)}.{assetBundlePath}"));
+                            shader = bundle.LoadAsset<Shader>(shaderName);
+                            bundle.Unload(false);
+                            return shader;
+                        }
+                        else
+                            return CommonLib.LoadAsset<Shader>(assetBundlePath, $"{shaderName}");
+                    }
+                    catch
+                    {
+                        Logger.LogWarning($"Unable to load shader: {shaderName}");
+                        return null;
+                    }
+                }
+                else
+                {
+                    try
+                    {
+                        if (assetBundlePath.StartsWith("Resources."))
+                        {
+                            AssetBundle bundle = AssetBundle.LoadFromMemory(UILib.Resource.LoadEmbeddedResource($"{nameof(KK_Plugins)}.{assetBundlePath}"));
+                            shader = bundle.LoadAsset<Shader>(shaderName);
+                            var go = bundle.LoadAsset<GameObject>(assetPath);
+                            bundle.Unload(false);
 
-            var tex = new Texture2D(2, 2, format, mipmaps);
-            tex.LoadImage(texBytes);
-            return tex;
+                            if (shader == null)
+                            {
+                                var renderers = go.GetComponentsInChildren<Renderer>();
+                                for (var i = 0; i < renderers.Length; i++)
+                                {
+                                    var renderer = renderers[i];
+                                    for (var j = 0; j < renderer.materials.Length; j++)
+                                    {
+                                        var material = renderer.materials[j];
+                                        if (material.shader.NameFormatted() == shaderName)
+                                            shader = material.shader;
+                                    }
+                                }
+                            }
+                            Destroy(go);
+
+                            return shader;
+                        }
+                        else
+                        {
+#if PH
+                            AssetBundle bundle = AssetBundle.LoadFromFile(assetBundlePath);
+                            var go = bundle.LoadAsset<GameObject>(assetPath);
+                            bundle.Unload(false);
+#else
+                            var go = CommonLib.LoadAsset<GameObject>(assetBundlePath, assetPath);
+#endif
+                            var renderers = go.GetComponentsInChildren<Renderer>();
+                            for (var i = 0; i < renderers.Length; i++)
+                            {
+                                var renderer = renderers[i];
+                                for (var j = 0; j < renderer.materials.Length; j++)
+                                {
+                                    var material = renderer.materials[j];
+                                    if (material.shader.NameFormatted() == shaderName)
+                                        shader = material.shader;
+                                }
+                            }
+                            Destroy(go);
+                            return shader;
+                        }
+                    }
+                    catch
+                    {
+                        Logger.LogWarning($"Unable to load shader: {shaderName}");
+                        return shader;
+                    }
+                }
+            }
         }
 
-        internal static bool CheckBlacklist(string materialName, string propertyName)
+#if KK || EC
+        public override bool CheckBlacklist(string materialName, string propertyName)
         {
             if (materialName == "cf_m_body" || materialName == "cm_m_body")
                 if (propertyName == "alpha_a" || propertyName == "alpha_b" || propertyName == "AlphaMask")
                     return true;
             return false;
         }
+#endif
+
+#if PH
+        /// <summary>
+        /// Disable ShaderOptimization if the user enables it since it doesn't work properly
+        /// </summary>
+        internal override void ShaderOptimization_SettingChanged(object sender, EventArgs e)
+        {
+            if (ShaderOptimization.Value)
+                ShaderOptimization.Value = false;
+        }
+#endif
 
         /// <summary>
         /// Get the KKAPI character controller for MaterialEditor. Provides access to methods for getting and setting material changes.
         /// </summary>
         /// <param name="chaControl"></param>
         /// <returns>KKAPI character controller</returns>
-        public static MaterialEditorCharaController GetCharaController(ChaControl chaControl) => chaControl?.gameObject?.GetComponent<MaterialEditorCharaController>();
-
-        internal static Texture2D GetT2D(RenderTexture renderTexture)
-        {
-            var currentActiveRT = RenderTexture.active;
-            RenderTexture.active = renderTexture;
-            var tex = new Texture2D(renderTexture.width, renderTexture.height);
-            tex.ReadPixels(new Rect(0, 0, tex.width, tex.height), 0, 0);
-            RenderTexture.active = currentActiveRT;
-            return tex;
-        }
-
-        internal static void SaveTexR(RenderTexture renderTexture, string path)
-        {
-            var tex = GetT2D(renderTexture);
-            File.WriteAllBytes(path, tex.EncodeToPNG());
-            DestroyImmediate(tex);
-        }
-
-        internal static void SaveTex(Texture tex, string path, RenderTextureFormat rtf = RenderTextureFormat.Default, RenderTextureReadWrite cs = RenderTextureReadWrite.Default)
-        {
-            var tmp = RenderTexture.GetTemporary(tex.width, tex.height, 0, rtf, cs);
-            var currentActiveRT = RenderTexture.active;
-            RenderTexture.active = tmp;
-            GL.Clear(false, true, new Color(0, 0, 0, 0));
-            Graphics.Blit(tex, tmp);
-            SaveTexR(tmp, path);
-            RenderTexture.active = currentActiveRT;
-            RenderTexture.ReleaseTemporary(tmp);
-        }
-
-        internal class ShaderData
-        {
-            public string ShaderName;
-            public Shader Shader;
-            public int? RenderQueue = null;
-            public bool ShaderOptimization;
-
-            public ShaderData(string shaderName, string assetBundlePath = "", string renderQueue = "", string assetPath = "", string shaderOptimization = null)
-            {
-                ShaderName = shaderName;
-
-                if (renderQueue.IsNullOrEmpty())
-                    RenderQueue = null;
-                else if (int.TryParse(renderQueue, out int result))
-                    RenderQueue = result;
-                else
-                    RenderQueue = null;
-
-                if (bool.TryParse(shaderOptimization, out bool shaderOptimizationBool))
-                    ShaderOptimization = shaderOptimizationBool;
-                else
-                    ShaderOptimization = true;
-
-                if (assetBundlePath.IsNullOrEmpty())
-                {
-                    Shader = null;
-                }
-                else
-                {
-                    if (assetPath.IsNullOrEmpty())
-                    {
-                        try
-                        {
-                            if (assetBundlePath.StartsWith("Resources."))
-                            {
-                                AssetBundle bundle = AssetBundle.LoadFromMemory(UILib.Resource.LoadEmbeddedResource($"{nameof(KK_Plugins)}.{assetBundlePath}"));
-                                Shader = bundle.LoadAsset<Shader>(shaderName);
-                                bundle.Unload(false);
-                            }
-                            else
-                                Shader = CommonLib.LoadAsset<Shader>(assetBundlePath, $"{shaderName}");
-                        }
-                        catch
-                        {
-                            Logger.LogWarning($"Unable to load shader: {shaderName}");
-                            Shader = null;
-                        }
-                    }
-                    else
-                    {
-                        try
-                        {
-                            if (assetBundlePath.StartsWith("Resources."))
-                            {
-                                AssetBundle bundle = AssetBundle.LoadFromMemory(UILib.Resource.LoadEmbeddedResource($"{nameof(KK_Plugins)}.{assetBundlePath}"));
-                                Shader = bundle.LoadAsset<Shader>(shaderName);
-
-                                var go = bundle.LoadAsset<GameObject>(assetPath);
-                                foreach (var x in go.GetComponentsInChildren<Renderer>())
-                                    foreach (var y in x.materials)
-                                        if (y.shader.NameFormatted() == ShaderName)
-                                            Shader = y.shader;
-                                Destroy(go);
-
-                                bundle.Unload(false);
-                            }
-                            else
-                            {
-                                var go = CommonLib.LoadAsset<GameObject>(assetBundlePath, assetPath);
-                                foreach (var x in go.GetComponentsInChildren<Renderer>())
-                                    foreach (var y in x.materials)
-                                        if (y.shader.NameFormatted() == ShaderName)
-                                            Shader = y.shader;
-                                Destroy(go);
-                            }
-                        }
-                        catch
-                        {
-                            Logger.LogWarning($"Unable to load shader: {shaderName}");
-                            Shader = null;
-                        }
-                    }
-                }
-            }
-        }
-
-        internal class ShaderPropertyData
-        {
-            public string Name;
-            public ShaderPropertyType Type;
-            public string DefaultValue = null;
-            public string DefaultValueAssetBundle = null;
-            public float? MinValue = null;
-            public float? MaxValue = null;
-
-            public ShaderPropertyData(string name, ShaderPropertyType type, string defaultValue = null, string defaultValueAB = null, string minValue = null, string maxValue = null)
-            {
-                Name = name;
-                Type = type;
-                DefaultValue = defaultValue.IsNullOrEmpty() ? null : defaultValue;
-                DefaultValueAssetBundle = defaultValueAB.IsNullOrEmpty() ? null : defaultValueAB;
-                if (!minValue.IsNullOrWhiteSpace() && !maxValue.IsNullOrWhiteSpace())
-                {
-                    if (float.TryParse(minValue, out float min) && float.TryParse(maxValue, out float max))
-                    {
-                        MinValue = min;
-                        MaxValue = max;
-                    }
-                }
-            }
-        }
+        public static MaterialEditorCharaController GetCharaController(ChaControl chaControl) => chaControl == null ? null : chaControl.gameObject.GetComponent<MaterialEditorCharaController>();
     }
 }
